@@ -64,10 +64,10 @@
 	//if success is 1 means message is sent 
 	if($flag == 1){
 	//Redirecting back to our form with a request success 
-	header('Location: index.php?success');
+	header('Location: index.html?success');
 	}else{
 	//Redirecting back to our form with a request failure 
-	header('Location: index.php?failure');
+	header('Location: index.html?failure');
 	}
 
 	curl_close($ch);
