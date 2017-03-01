@@ -41,7 +41,7 @@ a {
 }
 a:hover, a:focus {
 	text-decoration: none;
-	color: #03a9f4;
+	color: #EDC834;
 }
 ul, ol {
 	list-style: none;
@@ -73,7 +73,7 @@ hr {
 	width: 70px;
 	text-align: center;
 	position: relative;
-	background: #03a9f4;
+	background: #EDC834;
 	margin: 0 auto;
 	margin-bottom: 30px;
 	border: 0;
@@ -119,13 +119,13 @@ hr {
 }
 .navbar-custom .nav li a:hover {
 	outline: 0;
-	color: #03a9f4;
+	color: #EDC834;
 	background-color: transparent;
 }
 .navbar-custom .nav li a:focus, .navbar-custom .nav li a:active {
 	outline: 0;
 	background-color: transparent;
-	color: #03a9f4;
+	color: #EDC834;
 }
 .navbar-custom .nav li.active {
 	outline: 0;
@@ -137,13 +137,14 @@ hr {
 	color: #fff;
 }
 .btn-default {
-	color: #fff;
+	color: #000;
 	background-color: transparent;
-	border-color: #fff;
+	border-color: #000;
 	padding: 10px 20px;
 	margin: 0;
-	font-size: 16px;
-	border-radius: 0;
+	font-size: 20px;
+	font-weight: 600;
+	border-radius: 3px;
 }
 .btn-default:hover, .btn-default:focus, .btn-default.focus, .btn-default:active, .btn-default.active {
 	color: #fff;
@@ -159,8 +160,8 @@ hr {
 }
 .btn-primary:hover, .btn-primary:focus, .btn-primary.focus, .btn-primary:active, .btn-primary.active {
 	color: #fff;
-	background-color: #03a9f4;
-	border-color: #03a9f4;
+	background-color: #EDC834;
+	border-color: #EDC834;
 }
 .btn-primary i.fa {
 	margin-right: 10px;
@@ -174,7 +175,7 @@ hr {
 	text-align: center;
 	color: #fff;
 	background: url(../img/intro-bg.jpg) no-repeat center top;
-	background-color: #03a9f4;
+	background-color: #EDC834;
 	-webkit-background-size: cover;
 	-moz-background-size: cover;
 	background-size: cover;
@@ -204,10 +205,10 @@ hr {
 /* Skills Section */
 #skills {
 	padding: 100px 0;
-	background: #03a9f4;
+	background: #EDC834;
 }
 #skills h2 {
-	color: #fff;
+	color: #000;
 }
 #skills hr {
 	background: rgba(255,255,255,0.3);
@@ -219,7 +220,7 @@ hr {
 }
 #skills .skill h4 {
 	font-weight: 600;
-	color: #fff;
+	color: #000;
 }
 .chart {
 	position: relative;
@@ -270,7 +271,7 @@ ol.type li {
 	margin-left: 20px;
 }
 ol.type li a {
-	background: #03a9f4;
+	background: #EDC834;
 	color: #fff;
 	padding: 6px 14px;
 }
@@ -337,7 +338,7 @@ ol.type li a:hover {
 	position: absolute;
 	text-align: center;
 	margin: 0 auto;
-	color: #ffffff;
+	color: #fff;
 	background: rgba(0, 0, 0, 0.66);
 	padding: 33% 0 0 0;
 	height: 100%;
@@ -348,7 +349,7 @@ ol.type li a:hover {
 .hover-bg .hover-text>h4 {
 	opacity: 0;
 	color: #fff;
-	font-weight: 400;
+	font-weight: 500;
 	-webkit-transform: translateY(100%);
 	transform: translateY(100%);
 	transition: all 0.3s;
@@ -382,16 +383,16 @@ ol.type li a:hover {
 /* Achivements Section */
 #achievements {
 	padding: 100px 0;
-	background: #03a9f4;
+	background: #EDC834;
 }
 #achievements h2 {
-	color: #fff;
+	color: #000;
 }
 #achievements hr {
 	background: rgba(255,255,255,0.3);
 }
 .achievement-box h4 {
-	color: #fff;
+	color: #000;
 	font-size: 30px;
 	font-weight: 400;
 	margin-left: 5px;
@@ -512,10 +513,10 @@ ol.type li a:hover {
 #contact {
 	padding: 35px 0 40px 0;
 	color: #121d1f;
-	background: #03a9f4;
+	background: #EDC834;
 }
 #contact h2 {
-	color: #fff;
+	color: #000;
 }
 #contact hr {
 	background: rgba(255,255,255,0.3);
@@ -524,7 +525,7 @@ ol.type li a:hover {
 	padding-top: 20px;
 	font-size: 20px;
 	font-weight: 400;
-	color: #fff;
+	color: #000;
 }
 #contact form {
 	padding: 30px 0;
@@ -596,14 +597,14 @@ color: #2c3e50;
 }
 #contact .btn {
 	background-color: transparent;
-	border: 1px solid #fff;
-	border-radius: 0;
+	border: 1px solid #000;
+	border-radius: 3px;
 	padding: 10px 20px;
-	color: #fff;
+	color: #000;
 	margin-top: 15px;
 }
 #contact .btn:hover, #contact .btn:focus {
-	background-color: #121d1f;
+	background-color: #fff;
 	border: 1px solid #121d1f;
 }
 .btn:active, .btn.active {
@@ -629,7 +630,7 @@ a:focus, .btn:focus, .btn:active:focus, .btn.active:focus, .btn.focus, .btn:acti
 	color: #a0a5a5;
 }
 #footer a:hover {
-	color: #03a9f4;
+	color: #EDC834;
 }
 
 /* Media Queries */
@@ -638,22 +639,22 @@ a:focus, .btn:focus, .btn:active:focus, .btn.active:focus, .btn.focus, .btn:acti
 	height: 100%;
 	padding: 0;
 	text-align: left;
-	color: #fff;
+	color: #000;
 }
 .intro H1 {
-	font-size: 60px;
+	font-size: 70px;
 	font-weight: 500;
 	letter-spacing: -2px;
 }
 .intro .name {
-	font-weight: 600;
+	font-weight: 650;
 }
 .intro .intro-text {
 	max-width: 75%;
 }
 .intro .intro-text p {
 	font-family: 'Lato', sans-serif;
-	font-size: 20px;
+	font-size: 40px;
 	margin-bottom: 40px;
 	margin-top: 20px;
 }
