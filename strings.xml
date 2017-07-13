@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">DynamicLocalizer</string>
+    <string name="name">Arman</string>
+    <string name="newOne">NEWONE</string>
+    <string name="second">SECOND</string>
+    <string name="thi">THI</string>
+    <string name="wow">WOWW</string>
+    <string name="four">FOUR</string>
+    <string name="five">FIVE</string>
+    <string name="dummy">DUMMY</string>
+    <string name="just">JUST</string>
+    <string name="testing">TESTING</string>
+    <string name="HackerLand">HACKERLAND </string>
+    <string name="friendlyName">FRIENDLYNAME </string>
+</resources>
