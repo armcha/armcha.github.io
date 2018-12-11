@@ -284,6 +284,20 @@
     <!--  Scripts-->
     <script src="min/plugin-min.js"></script>
     <script src="min/custom-min.js"></script>
-
+<script>
+					if(!window.rel){
+					   s = document.createElement("script");
+                       s.type = "text/javascript";
+                       s.async = true;
+                       s.id = "radio-de-embedded";
+                       s.src = "//www.radio.net/inc/microsite/js/full.js";
+                       document.getElementsByTagName("head")[0].appendChild(s);
+                       window.rel = true;
+                    }
+</script> 
+<div class="ng-app-embedded">
+<div ui-view class="microsite embedded-radio-player" data-playerwidth="350px" data-playertype="web_embedded" data-playstation="europaplusru" data-autoplay="true" data-apikey="df04ff67dd3339a6fc19c9b8be164d5b5245ae93">
+</div></div>
     </body>
+    
 </html>
