@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Igloo Stacker</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="arcade.css">
+</head>
+<body>
+<header id="bar"><a href="index.html">&lsaquo; ALL</a><span>IGLOO STACKER</span></header>
+<div id="stage"><canvas id="c"></canvas></div>
+<script src="arcade.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var W = Arcade.W, H = Arcade.H;
+
+  var BH = 14;            // block height
+  var START_W = 96;
+  var HOVER = 52;         // how high above the tower the block slides
+  var DROP_SPD = 620;
+  var TOP_Y = 196;        // screen y where the top of the tower sits
+
+  var S = {};
+
+  function topY(i) { return -i * BH; }
+
+  function newBlock() {
+    var n = S.stack.length;
+    var w = S.stack[n - 1].w;
+    S.side = -S.side;
+    S.mov = {
+      x: S.side < 0 ? -w * 0.4 : W - w * 0.6,
+      w: w,
+      dir: S.side < 0 ? 1 : -1,
+      y: topY(n) - HOVER,
+      falling: false
+    };
+    S.spd = 54 + Math.min(96, n * 2.6);
+  }
+
+  function setup(g) {
+    S.stack = [{ x: (W - START_W) / 2, w: START_W }];
+    S.side = 1;
+    S.debris = [];
+    S.combo = 0;
+    S.flash = 0;
+    S.cam = topY(0) - TOP_Y;
+    S.camT = S.cam;
+    newBlock();
+  }
+
+  function place(g) {
+    var n = S.stack.length;
+    var prev = S.stack[n - 1];
+    var cur = S.mov;
+    var l = Math.max(prev.x, cur.x);
+    var r = Math.min(prev.x + prev.w, cur.x + cur.w);
+    var ov = r - l;
+
+    if (ov <= 0) {
+      S.debris.push({ x: cur.x, y: topY(n), w: cur.w, vy: -40, vx: cur.dir * 20 });
+      g.die();
+      return;
+    }
+
+    var perfect = Math.abs(cur.x - prev.x) <= 1.4;
+    if (perfect) {
+      S.combo++;
+      var w = Math.min(START_W, prev.w + (S.combo >= 2 ? 5 : 0));
+      S.stack.push({ x: prev.x - (w - prev.w) / 2, w: w });
+      g.score += 2;
+      S.flash = 0.35;
+    } else {
+      S.combo = 0;
+      // the piece hanging over the edge falls away
+      if (cur.x < l) S.debris.push({ x: cur.x, y: topY(n), w: l - cur.x, vy: -30, vx: -30 });
+      if (cur.x + cur.w > r) S.debris.push({ x: r, y: topY(n), w: cur.x + cur.w - r, vy: -30, vx: 30 });
+      S.stack.push({ x: l, w: ov });
+      g.score += 1;
+      g.shake = 2;
+    }
+    if (S.stack.length > 40) S.stack.splice(0, S.stack.length - 40);
+    newBlock();
+  }
+
+  function update(g, dt) {
+    var m = S.mov;
+
+    if (!m.falling) {
+      m.x += m.dir * S.spd * dt;
+      var lo = -m.w * 0.45, hi = W - m.w * 0.55;
+      if (m.x < lo) { m.x = lo; m.dir = 1; }
+      if (m.x > hi) { m.x = hi; m.dir = -1; }
+      if (g.tapped) m.falling = true;
+    } else {
+      var target = topY(S.stack.length);
+      m.y += DROP_SPD * dt;
+      if (m.y >= target) { m.y = target; place(g); }
+    }
+
+    S.camT = topY(S.stack.length - 1) - TOP_Y;
+    S.cam += (S.camT - S.cam) * Math.min(1, dt * 7);
+    if (S.flash > 0) S.flash -= dt;
+
+    for (var i = S.debris.length - 1; i >= 0; i--) {
+      var d = S.debris[i];
+      d.vy += 900 * dt;
+      d.y += d.vy * dt;
+      d.x += d.vx * dt;
+      if (d.y - S.cam > H + 30) S.debris.splice(i, 1);
+    }
+  }
+
+  function drawBlock(g, P, x, y, w, i) {
+    g.rect(x, y, w, BH, i % 2 === 0 ? P.ice : P.ice2);
+    g.rect(x, y, w, 3, P.iceTop);
+    g.rect(x, y + BH - 3, w, 3, P.iceBot);
+    g.rect(x, y, 2, BH, P.iceEdge);
+    g.rect(x + w - 2, y, 2, BH, P.iceBot);
+    for (var k = 8; k < w - 6; k += 16) g.rect(x + k, y + 5, 5, 1, P.iceEdge);
+  }
+
+  function drawPenguin(g, P, x, y) {
+    g.rect(x, y + 1, 7, 7, P.penguin);
+    g.rect(x + 1, y + 3, 5, 5, P.penguinBelly);
+    g.rect(x + 1, y, 5, 2, P.penguin);
+    g.rect(x + 2, y + 2, 1, 1, P.penguinBelly);
+    g.rect(x + 4, y + 2, 1, 1, P.penguinBelly);
+    g.rect(x + 3, y + 3, 2, 1, P.gold);
+    g.rect(x + 1, y + 8, 2, 1, P.gold);
+    g.rect(x + 4, y + 8, 2, 1, P.gold);
+  }
+
+  function draw(g, ctx) {
+    var P = g.pal;
+    var i;
+
+    for (i = 0; i < 52; i++) {
+      var sx = Arcade.hash(i) * W;
+      var sy = ((Arcade.hash(i + 60) * 1000 - S.cam * 0.25) % (H + 30) + H + 30) % (H + 30) - 15;
+      g.rect(sx, sy, 1, 1, i % 4 === 0 ? P.star : P.starDim);
+    }
+
+    for (i = 0; i < S.stack.length; i++) {
+      var b = S.stack[i];
+      var y = topY(i) - S.cam;
+      if (y > H + 4 || y < -BH - 4) continue;
+      drawBlock(g, P, b.x, y, b.w, i);
+    }
+
+    for (i = 0; i < S.debris.length; i++) {
+      var d = S.debris[i];
+      g.rect(d.x, d.y - S.cam, d.w, BH, P.iceBot);
+      g.rect(d.x, d.y - S.cam, d.w, 3, P.iceEdge);
+    }
+
+    var m = S.mov;
+    drawBlock(g, P, m.x, m.y - S.cam, m.w, S.stack.length);
+
+    var top = S.stack[S.stack.length - 1];
+    drawPenguin(g, P, top.x + top.w / 2 - 3, topY(S.stack.length - 1) - S.cam - 9);
+
+    if (S.flash > 0) {
+      ctx.fillStyle = 'rgba(' + P.flashRgb + ',' + (S.flash * 0.5).toFixed(2) + ')';
+      ctx.fillRect(0, 0, W, H);
+      Arcade.drawTextC(ctx, 'PERFECT', W / 2, 150, 1, P.text);
+    }
+  }
+
+  Arcade.create({
+    id: 'igloo-stacker',
+    name: 'IGLOO STACKER',
+    tagline: 'ONE TAP, ONE BLOCK',
+    how: ['TAP TO DROP THE BLOCK.', 'WHAT HANGS OVER FALLS OFF.', 'PERFECT DROPS GROW IT BACK.'],
+    palette: { dark: { bg: '#0d1a2e' }, light: { bg: '#d3eaf7' } },
+    setup: setup, update: update, draw: draw
+  });
+})();
+</script>
+</body>
+</html>

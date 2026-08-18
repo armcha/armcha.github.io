@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Icy Hopper</title>
+<script src="theme.js"></script>
+<link rel="stylesheet" href="arcade.css">
+</head>
+<body>
+<header id="bar"><a href="index.html">&lsaquo; ALL</a><span>ICY HOPPER</span></header>
+<div id="stage"><canvas id="c"></canvas></div>
+<script src="arcade.js"></script>
+<script src="debug.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var W = Arcade.W, H = Arcade.H;
+
+  var BW = 20, BH = 8, COLS = 9;   // one floor is 9 blocks of 20 x 8
+  var ZONE_ROWS = 16;              // floors per zone
+  var PW = 9, PH = 11;
+  var TW = 11, TH = 9;             // topi
+
+  var EMPTY = 0, ICE = 1, ROCK = 2;
+
+  // Six ways the climb can work. Everything else - floors, zones, avalanche,
+  // hawks, topi, the kit, scoring - stays the same, so switching shows only
+  // the mechanic change.
+  var BONK = 0, CLIMB = 1, DRILL = 2, HAMMER = 3, FLIP = 4, STREAK = 5;
+
+  var SMASH_DEFAULT = [130, 270, 230, 0, 130, 130];
+
+  // The climber's kit. Every power works the same under all six mechanics, so
+  // the kit never fights the core mechanic.
+  var KIT = [
+    { name: 'SNOW BOOTS', note: 'SIDE SPEED UP' },
+    { name: 'ICE PICK',   note: 'ROCK BREAKS TOO' },
+    { name: 'SPRINGS',    note: 'JUMP HIGHER' },
+    { name: 'FUR COAT',   note: 'ONE FREE SNOW HIT' },
+    { name: 'CONDOR!',    note: 'FLY' }
+  ];
+  var KIT_MAX = KIT.length;
+  var BEST_KEY = 'dc.kit.icy-hopper';
+
+  var T = Debug.panel('icy-hopper', [
+    { group: 'CORE MECHANIC', key: 'mech', type: 'choice', value: BONK, restart: true,
+      options: ['BONK + DROP', 'SMASH + CLIMB', 'DRILL THROUGH', 'HAMMER', 'FLIP TAP', 'CLEAN STREAK'],
+      notes: [
+        'Smashing ice makes a hole and drops you back down. You jump through that hole on the next bounce. Smashing costs a whole bounce, so steering into holes is the fast route.',
+        'Smashing ice lifts you straight onto that floor. No second jump. Smashing is cheap, so solid floors barely slow you down and aiming matters less.',
+        'Smashing costs nothing and you fly straight through without stopping. Raise BOUNCE to punch through two or three floors in one jump.',
+        'You carry a hammer. PRESS to swing at the ice right above your head, HOLD to steer. Your head alone never breaks anything, so a solid floor stops you dead unless you swing in time. The closest to real Ice Climber.',
+        'You always run sideways and never stop. PRESS to turn around. No holding at all. Smashing works like BONK + DROP.',
+        'Every floor you pass cleanly makes your bounce higher, up to plus 30 percent, which is two floors in one jump. Any bonk resets it to zero. Smashing works like BONK + DROP.'
+      ] },
+
+    { group: 'MOTION', key: 'grav', type: 'range', label: 'GRAVITY', min: 600, max: 1800, step: 25, value: 1150 },
+    { group: 'MOTION', key: 'jump', type: 'range', label: 'BOUNCE', min: 250, max: 560, step: 5, value: 365 },
+    { group: 'MOTION', key: 'smash', type: 'range', label: 'SMASH LIFT', min: 0, max: 400, step: 10, value: 130 },
+    { group: 'MOTION', key: 'run', type: 'range', label: 'SIDE SPEED', min: 50, max: 260, step: 5, value: 130 },
+    { group: 'MOTION', key: 'rowGap', type: 'range', label: 'FLOOR GAP', min: 30, max: 62, step: 2, value: 40, restart: true },
+
+    { group: 'THE KIT', key: 'kitCost', type: 'range', label: 'VEG PER GEAR', min: 1, max: 8, step: 1, value: 2 },
+    { group: 'THE KIT', key: 'vegRate', type: 'range', label: 'VEG ON FLOORS', min: 5, max: 100, step: 5, value: 65, restart: true },
+    { group: 'THE KIT', key: 'vegFar', type: 'range', label: 'VEG OFF PATH', min: 0, max: 100, step: 5, value: 60, restart: true },
+    { group: 'THE KIT', key: 'flySec', type: 'range', label: 'CONDOR TIME', min: 1, max: 8, step: 0.5, value: 4, dec: 1 },
+    { group: 'THE KIT', key: 'flySpd', type: 'range', label: 'CONDOR SPEED', min: 80, max: 320, step: 10, value: 170 },
+
+    { group: 'PRESSURE', key: 'snowBase', type: 'range', label: 'SNOW START', min: 0, max: 90, step: 2, value: 22 },
+    { group: 'PRESSURE', key: 'snowRamp', type: 'range', label: 'SNOW RAMP', min: 0, max: 3, step: 0.05, value: 1.05, dec: 2 },
+    { group: 'PRESSURE', key: 'snowLead', type: 'range', label: 'MAX LEAD', min: 200, max: 900, step: 20, value: 460 },
+    { group: 'PRESSURE', key: 'topiSpd', type: 'range', label: 'TOPI SPEED', min: 0, max: 70, step: 2, value: 24 },
+    { group: 'PRESSURE', key: 'hawkGap', type: 'range', label: 'HAWK GAP', min: 1, max: 9, step: 0.5, value: 5, dec: 1 },
+
+    { group: 'SHOW', key: 'kit', type: 'toggle', label: 'THE KIT', value: true },
+    { group: 'SHOW', key: 'hawks', type: 'toggle', label: 'HAWKS', value: true },
+    { group: 'SHOW', key: 'topi', type: 'toggle', label: 'TOPI', value: true },
+    { group: 'SHOW', key: 'snow', type: 'toggle', label: 'AVALANCHE', value: true },
+    { group: 'SHOW', key: 'rock', type: 'toggle', label: 'ROCK', value: true },
+    { group: 'SHOW', key: 'floorNo', type: 'toggle', label: 'FLOOR NO.', value: true },
+    { group: 'SHOW', key: 'path', type: 'toggle', label: 'SHOW PATH', value: false }
+  ], function (key, t) {
+    if (key === 'mech') t.smash = SMASH_DEFAULT[t.mech];
+  });
+
+  var S = {};
+
+  function rowY(n) { return -n * T.rowGap; }
+  function zoneOf(n) { return Math.floor(n / ZONE_ROWS); }
+
+  function bestKit() {
+    try { return parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0; } catch (e) { return 0; }
+  }
+  function noteBestKit(level) {
+    if (level <= bestKit()) return;
+    try { localStorage.setItem(BEST_KEY, String(level)); } catch (e) { /* ignore */ }
+  }
+
+  /* ---- floor generation ---------------------------------------------- */
+
+  function rockChance(z) { return T.rock ? Math.min(0.26, z * 0.05) : 0; }
+
+  // Gaps drift by at most 2 columns from the gap below, so the holes form a
+  // path you can read and follow.
+  function driftFrom(lastGap, gapW) {
+    var d = Math.floor(Math.random() * 5) - 2;
+    return Math.max(0, Math.min(COLS - gapW, lastGap + d));
+  }
+
+  function gappedRow(z, b, lastGap) {
+    // One block wide by default. A wide gap is easy to rise through but you
+    // drop straight back down it, which costs a floor. Missing a narrow gap
+    // only smashes a hole you use on the next bounce - the softer failure.
+    var gapW = (z <= 1 && Math.random() < 0.5) ? 2 : 1;
+    var gs = driftFrom(lastGap, gapW);
+    var rc = rockChance(z);
+    for (var i = 0; i < COLS; i++) {
+      if (i >= gs && i < gs + gapW) b[i] = EMPTY;
+      else b[i] = Math.random() < rc ? ROCK : ICE;
+    }
+    return gs;
+  }
+
+  function solidRow(b) {
+    for (var i = 0; i < COLS; i++) b[i] = ICE;
+  }
+
+  function mixedRow(z, b, lastGap) {
+    solidRow(b);
+    var want = 2 + Math.floor(Math.random() * 3);
+    var placed = 0, guard = 0, i;
+    while (placed < want && guard++ < 20) {
+      var run = 1 + Math.floor(Math.random() * 2);
+      var at = Math.floor(Math.random() * (COLS - run + 1));
+      for (i = at; i < at + run && placed < want; i++) {
+        if (b[i] === ICE) { b[i] = ROCK; placed++; }
+      }
+    }
+    var keep = Math.max(0, Math.min(COLS - 1, lastGap));
+    b[keep] = ICE;
+    if (keep + 1 < COLS) b[keep + 1] = ICE;
+    else b[keep - 1] = ICE;
+    return keep;
+  }
+
+  function zoneLineRow(b, lastGap) {
+    var gs = driftFrom(lastGap, 3);
+    for (var i = 0; i < COLS; i++) b[i] = (i >= gs && i < gs + 3) ? EMPTY : ICE;
+    return gs;
+  }
+
+  function pickKind(n, z) {
+    if (n === 0) return 'ground';
+    if (n % ZONE_ROWS === 0) return 'zoneline';
+    var r = Math.random();
+    if (z <= 0) return 'gapped';
+    if (z === 1) return r < 0.80 ? 'gapped' : 'solid';
+    if (z === 2) return r < 0.70 ? 'gapped' : (r < 0.95 ? 'solid' : 'mixed');
+    if (z === 3) return r < 0.60 ? 'gapped' : (r < 0.80 ? 'solid' : 'mixed');
+    return r < 0.45 ? 'gapped' : (r < 0.70 ? 'solid' : 'mixed');
+  }
+
+  // A veggie is placed away from the hole most of the time, so taking it costs
+  // a detour. That detour is the decision the kit adds to the game.
+  function placeVeg(b, path) {
+    var near = [], far = [];
+    for (var c = 0; c < COLS; c++) {
+      if (!b[c]) continue;
+      (Math.abs(c - path) >= 2 ? far : near).push(c);
+    }
+    var pool = (Math.random() * 100 < T.vegFar && far.length) ? far : near;
+    if (!pool.length) pool = far.length ? far : near;
+    if (!pool.length) return -1;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function makeRow(n) {
+    var z = zoneOf(n);
+    var b = new Array(COLS);
+    var kind = pickKind(n, z);
+
+    if (kind === 'ground' || kind === 'solid') solidRow(b);
+    else if (kind === 'zoneline') S.lastGap = zoneLineRow(b, S.lastGap);
+    else if (kind === 'mixed') S.lastGap = mixedRow(z, b, S.lastGap);
+    else S.lastGap = gappedRow(z, b, S.lastGap);
+
+    var row = { n: n, kind: kind, z: z, b: b, veg: -1, topi: null };
+
+    if (T.kit && n > 1 && kind !== 'zoneline' && Math.random() * 100 < T.vegRate) {
+      row.veg = placeVeg(b, S.lastGap);
+    }
+
+    if (T.topi && z >= 2 && kind !== 'zoneline' && Math.random() < 0.24) {
+      var starts = [];
+      for (var i = 0; i + 2 < COLS; i++) {
+        if (b[i] && b[i + 1] && b[i + 2]) starts.push(i);
+      }
+      if (starts.length) {
+        var s0 = starts[Math.floor(Math.random() * starts.length)];
+        row.topi = { x: s0 * BW + 4, dir: Math.random() < 0.5 ? -1 : 1 };
+      }
+    }
+    return row;
+  }
+
+  function fillRows() {
+    while (rowY(S.nextN) >= S.cam - 110) {
+      S.rows.push(makeRow(S.nextN));
+      S.nextN++;
+    }
+  }
+
+  /* ---- helpers ------------------------------------------------------- */
+
+  function colsUnder(x) {
+    var c0 = Math.floor((x + 1) / BW);
+    var c1 = Math.floor((x + PW - 2) / BW);
+    var out = [];
+    for (var c = c0; c <= c1; c++) if (c >= 0 && c < COLS) out.push(c);
+    return out;
+  }
+
+  function puff(x, y, tone, n) {
+    for (var i = 0; i < (n || 5); i++) {
+      S.parts.push({
+        x: x, y: y,
+        vx: (Math.random() * 2 - 1) * 70,
+        vy: -Math.random() * 80,
+        life: 0.55, tone: tone
+      });
+    }
+  }
+
+  /* ---- the kit ------------------------------------------------------- */
+
+  function runSpeed()  { return T.run * (S.kit >= 1 ? 1.45 : 1); }
+  function breaksRock() { return S.kit >= 2; }
+
+  function bounceSpeed() {
+    var m = 1;
+    // CLEAN STREAK: every floor passed cleanly raises the bounce.
+    if (T.mech === STREAK) m *= 1 + Math.min(0.30, S.streak * 0.03);
+    if (S.kit >= 3) m *= 1.25;
+    // Capped so the rise never reaches four floors, which would be unreadable.
+    return T.jump * Math.min(1.45, m);
+  }
+
+  function gainVeg(g, x, y) {
+    S.veg++;
+    // Small on purpose. The reason to take a veggie is the gear, not points.
+    S.bonus += 5;
+    puff(x, y, 'purple', 5);
+    if (!T.kit || S.veg < T.kitCost) return;
+    S.veg = 0;
+    levelUp(g);
+  }
+
+  function levelUp(g) {
+    S.kit++;
+    if (S.kit >= KIT_MAX) {
+      // The condor is not a lasting power. It is a big moment, and then the
+      // chain starts again, so the curiosity comes back inside one run.
+      S.fly = T.flySec;
+      S.kitFlash = 1.4;
+      S.kitName = KIT[KIT_MAX - 1].name;
+      noteBestKit(KIT_MAX);
+      S.kit = 1;
+      S.bonus += 50;
+    } else {
+      if (S.kit === 4) S.shield = true;
+      S.kitFlash = 1.1;
+      S.kitName = KIT[S.kit - 1].name;
+      noteBestKit(S.kit);
+      S.bonus += 20;
+    }
+    g.shake = 4;
+  }
+
+  function loseLevel() {
+    if (S.kit > 0) S.kit--;
+    if (S.kit < 4) S.shield = false;
+  }
+
+  // Only the avalanche kills. A hawk or a topi knocks you down and costs one
+  // piece of gear. You cannot dodge sideways and aim at a hole at the same
+  // time, so instant death from a flying hawk would be unfair.
+  function knock(g, dir) {
+    if (S.hurt > 0 || S.fly > 0) return;
+    S.hurt = 0.75;
+    S.p.vy = 250;
+    S.p.x += dir * 5;
+    S.streak = 0;
+    loseLevel();
+    g.shake = 5;
+    puff(S.p.x + PW / 2, S.p.y + PH / 2, 'red', 6);
+    if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) { /* ignore */ } }
+  }
+
+  function breakBlock(g, r, c) {
+    r.b[c] = EMPTY;
+    puff(c * BW + BW / 2, rowY(r.n) + BH / 2, 'iceEdge');
+    if (r.topi && Math.floor((r.topi.x + TW / 2) / BW) === c) {
+      puff(r.topi.x + TW / 2, rowY(r.n) - TH / 2, 'topi', 7);
+      r.topi = null;
+      S.bonus += 15;
+    }
+  }
+
+  // HAMMER: press to break the ice just above your head, wherever you are.
+  function swingHammer(g) {
+    S.swing = 0.18;
+    var best = null;
+    for (var i = 0; i < S.rows.length; i++) {
+      var r = S.rows[i];
+      var bottom = rowY(r.n) + BH;
+      if (bottom <= S.p.y + 6 && bottom >= S.p.y - 26) {
+        if (!best || rowY(r.n) > rowY(best.n)) best = r;
+      }
+    }
+    if (!best) return;
+    var cs = colsUnder(S.p.x), hit = false;
+    for (var k = 0; k < cs.length; k++) {
+      var bt = best.b[cs[k]];
+      if (bt === ICE || (bt === ROCK && breaksRock())) { breakBlock(g, best, cs[k]); hit = true; }
+    }
+    if (hit) g.shake = 3;
+  }
+
+  /* ---- lifecycle ----------------------------------------------------- */
+
+  function setup(g) {
+    S.rows = [];
+    S.parts = [];
+    S.birds = [];
+    S.bonus = 0;
+    S.zone = 0;
+    S.zoneFlash = 0;
+    S.hurt = 0;
+    S.wave = 0;
+    S.dir = 1;          // FLIP TAP running direction
+    S.streak = 0;
+    S.swing = 0;
+    S.kit = 0;          // pieces of gear owned
+    S.veg = 0;          // veggies toward the next piece
+    S.shield = false;
+    S.fly = 0;          // condor time left
+    S.kitFlash = 0;
+    S.kitName = '';
+    S.p = { x: 85, y: -22, vx: 0, vy: -T.jump };
+    S.cam = S.p.y - 150;
+    S.bestY = S.p.y;
+    S.birdT = T.hawkGap + 1;
+    S.snow = 300;
+    S.lastGap = 4;
+    S.nextN = 0;
+    fillRows();
+  }
+
+  // Returns what the head did: 'clean' passed through, 'broke' smashed
+  // something, 'stopped' hit something it cannot break.
+  function headHit(g, r, by, cols) {
+    var stopped = false, broke = false;
+    for (var k = 0; k < cols.length; k++) {
+      var bt = r.b[cols[k]];
+      if (!bt) continue;
+      var canBreak = (bt === ICE) || (bt === ROCK && breaksRock());
+      // With the hammer your head breaks nothing - that is the whole point.
+      if (!canBreak || T.mech === HAMMER) stopped = true;
+      else { breakBlock(g, r, cols[k]); broke = true; }
+    }
+    if (stopped) {
+      S.p.y = by;
+      S.p.vy = 40;
+      g.shake = 4;
+      return 'stopped';
+    }
+    if (broke) {
+      if (T.mech === DRILL) {
+        S.p.vy = Math.min(S.p.vy, -T.smash);   // no snap: keep flying
+      } else {
+        S.p.y = by;
+        S.p.vy = -T.smash;
+      }
+      g.shake = 2.5;
+      return 'broke';
+    }
+    return 'clean';
+  }
+
+  function update(g, dt) {
+    var p = S.p;
+    var i, k, r, cs;
+
+    g.noSave = !T.__isDefault();
+
+    if (S.kitFlash > 0) S.kitFlash -= dt;
+    if (S.swing > 0) S.swing -= dt;
+
+    // The condor carries you straight up through everything.
+    if (S.fly > 0) {
+      S.fly -= dt;
+      p.vy = -T.flySpd;
+      p.y += p.vy * dt;
+      p.x += (g.held ? g.heldSide : 0) * runSpeed() * dt;
+      if (p.x + PW < 0) p.x = W; else if (p.x > W) p.x = -PW;
+      if (S.fly <= 0) p.vy = -60;
+    } else {
+      if (T.mech === FLIP) {
+        if (g.tapped) S.dir = -S.dir;
+        p.vx = S.dir * runSpeed();
+      } else {
+        if (T.mech === HAMMER && g.tapped && S.swing <= 0) swingHammer(g);
+        p.vx = (g.held ? g.heldSide : 0) * runSpeed();
+      }
+      p.x += p.vx * dt;
+      if (p.x + PW < 0) p.x = W;
+      else if (p.x > W) p.x = -PW;
+
+      p.vy += T.grav * dt;
+      if (p.vy > 560) p.vy = 560;
+      p.y += p.vy * dt;
+    }
+
+    var prevTop = p.y - p.vy * dt, prevBot = prevTop + PH;
+
+    for (i = 0; i < S.rows.length; i++) {
+      r = S.rows[i];
+      var ry = rowY(r.n);
+      if (ry < S.cam - 60 || ry > S.cam + H + 60) continue;
+
+      if (S.fly <= 0) {
+        if (p.vy > 0 && prevBot <= ry && p.y + PH >= ry) {
+          cs = colsUnder(p.x);
+          for (k = 0; k < cs.length; k++) {
+            if (r.b[cs[k]]) {
+              p.y = ry - PH;
+              p.vy = -bounceSpeed();
+              puff(p.x + PW / 2, ry, 'iceTop', 3);
+              break;
+            }
+          }
+        } else if (p.vy < 0) {
+          var by = ry + BH;
+          if (prevTop >= by && p.y <= by) {
+            var res = headHit(g, r, by, colsUnder(p.x));
+            if (res === 'clean') S.streak++;
+            else S.streak = 0;
+          }
+        }
+      }
+
+      if (r.veg >= 0) {
+        var vx = r.veg * BW + BW / 2 - 3, vy = ry - 8;
+        if (p.x < vx + 7 && p.x + PW > vx && p.y < vy + 8 && p.y + PH > vy) {
+          r.veg = -1;
+          gainVeg(g, vx + 3, vy + 4);
+        }
+      }
+
+      if (r.topi) {
+        if (!T.topi) { r.topi = null; }
+        else {
+          var t = r.topi;
+          var nx = t.x + t.dir * T.topiSpd * dt;
+          var cc = Math.floor((nx + TW / 2) / BW);
+          if (nx < 0 || nx + TW > W || cc < 0 || cc >= COLS || !r.b[cc]) t.dir = -t.dir;
+          else t.x = nx;
+          var ty = ry - TH;
+          if (p.x < t.x + TW && p.x + PW > t.x && p.y < ty + TH && p.y + PH > ty) knock(g, t.dir);
+        }
+      }
+    }
+
+    if (p.y < S.bestY) S.bestY = p.y;
+    // Rising: follow at once. Falling: hold still through a normal bounce and
+    // a one floor drop, then ease down so a long fall stays on screen.
+    var camTarget = p.y - 140;
+    if (camTarget < S.cam) S.cam = camTarget;
+    else if (camTarget > S.cam + 70) S.cam += (camTarget - S.cam - 70) * Math.min(1, dt * 5);
+
+    var climbed = -S.bestY;
+    var zNow = Math.floor(climbed / (ZONE_ROWS * T.rowGap));
+    if (zNow > S.zone) {
+      S.zone = zNow;
+      S.bonus += 25;
+      S.snow += 140;
+      S.zoneFlash = 1.2;
+    }
+    if (S.zoneFlash > 0) S.zoneFlash -= dt;
+    if (S.hurt > 0) S.hurt -= dt;
+
+    // The avalanche speeds up with TIME, not height. On a clock every player
+    // gets the same run length and the score is just how high they climbed.
+    if (T.snow) {
+      var snowSpd = T.snowBase + Math.min(62, g.t * T.snowRamp);
+      S.snow -= snowSpd * dt;
+      if (S.snow > p.y + T.snowLead) S.snow = p.y + T.snowLead;
+    } else {
+      S.snow = p.y + 4000;
+    }
+
+    fillRows();
+    for (i = S.rows.length - 1; i >= 0; i--) {
+      if (rowY(S.rows[i].n) > S.cam + H + 200) S.rows.splice(i, 1);
+    }
+
+    g.score = Math.floor(climbed / 5) + S.bonus;
+
+    if (!T.hawks) S.birds.length = 0;
+    S.birdT -= dt;
+    if (T.hawks && S.zone >= 1 && S.birdT <= 0) {
+      S.birdT = Math.max(1.2, T.hawkGap - g.score / 160);
+      var dir = Math.random() < 0.5 ? -1 : 1;
+      S.birds.push({
+        x: dir < 0 ? W + 12 : -12,
+        y: S.cam + g.rnd(18, 104),   // above the player, so you see it coming
+        vx: dir * g.rnd(34, 66),
+        f: 0
+      });
+    }
+    for (i = S.birds.length - 1; i >= 0; i--) {
+      var b = S.birds[i];
+      b.x += b.vx * dt;
+      b.f += dt * 9;
+      if (b.x < -30 || b.x > W + 30) { S.birds.splice(i, 1); continue; }
+      if (p.x < b.x + 9 && p.x + PW > b.x && p.y < b.y + 6 && p.y + PH > b.y) {
+        knock(g, b.vx < 0 ? -1 : 1);
+      }
+    }
+
+    for (i = S.parts.length - 1; i >= 0; i--) {
+      var q = S.parts[i];
+      q.vy += 420 * dt;
+      q.x += q.vx * dt; q.y += q.vy * dt;
+      q.life -= dt;
+      if (q.life <= 0) S.parts.splice(i, 1);
+    }
+
+    if (T.snow && S.fly <= 0 && p.y + PH >= S.snow) {
+      if (S.shield) {
+        // The fur coat: the snow throws you clear instead of burying you.
+        S.shield = false;
+        loseLevel();
+        p.y = S.snow - PH - 30;
+        p.vy = -500;
+        S.hurt = 0.75;
+        g.shake = 6;
+        S.kitFlash = 0.9;
+        S.kitName = 'COAT SAVED YOU';
+        puff(p.x + PW / 2, p.y + PH, 'snow', 10);
+      } else {
+        g.die();
+      }
+    }
+  }
+
+  /* ---- drawing ------------------------------------------------------- */
+
+  function drawPlayer(g, P, x, y) {
+    var k = S.kit;
+    if (k >= 4) {                                   // fur coat: wider gold body
+      g.rect(x - 1, y + 5, 11, 5, P.gold);
+      g.rect(x - 1, y + 5, 11, 1, P.goldLight);
+    }
+    g.rect(x + 1, y, 7, 3, P.red);
+    g.rect(x, y + 2, 9, 1, P.redDark);
+    g.rect(x + 2, y + 3, 5, 3, P.skin);
+    g.rect(x + 3, y + 4, 1, 1, P.ink);
+    g.rect(x + 5, y + 4, 1, 1, P.ink);
+    g.rect(x + 1, y + 6, 7, 3, P.parka);
+    g.rect(x, y + 7, 9, 2, P.parkaDark);
+    g.rect(x + 1, y + 9, 3, 2, k >= 1 ? P.gold : P.ink);   // boots
+    g.rect(x + 5, y + 9, 3, 2, k >= 1 ? P.gold : P.ink);
+    if (k >= 2) {                                   // ice pick in hand
+      g.rect(x + 8, y + 4, 4, 2, P.rockTop);
+      g.rect(x + 11, y + 3, 1, 3, P.snow);
+    }
+    if (k >= 3) {                                   // springs under the boots
+      g.rect(x + 1, y + 11, 7, 1, P.accent);
+      g.rect(x + 2, y + 12, 5, 1, P.iceEdge);
+    }
+    if (S.swing > 0) {
+      g.rect(x + 2, y - 7, 6, 4, P.rockTop);
+      g.rect(x + 4, y - 3, 2, 4, P.sleeper);
+    }
+  }
+
+  function drawCondor(g, P, x, y, t) {
+    var up = Math.floor(t * 8) % 2 === 0;
+    var wy = y - 14;
+    g.rect(x - 1, wy + 3, 11, 4, P.condor);
+    g.rect(x + 2, wy + 1, 5, 3, P.hawk);
+    g.rect(x + 7, wy + 2, 3, 2, P.gold);
+    if (up) {
+      g.rect(x - 11, wy - 2, 11, 4, P.condorWing);
+      g.rect(x + 9, wy - 2, 11, 4, P.condorWing);
+    } else {
+      g.rect(x - 11, wy + 5, 11, 4, P.condorWing);
+      g.rect(x + 9, wy + 5, 11, 4, P.condorWing);
+    }
+    g.rect(x + 4, wy + 7, 1, 4, P.condorDark);   // the claw holding on
+  }
+
+  function drawTopi(g, P, x, y, dir) {
+    g.rect(x + 1, y + 1, 9, 8, P.topi);
+    g.rect(x + 2, y, 7, 2, P.topiDark);
+    g.rect(x, y + 4, 11, 3, P.topi);
+    g.rect(dir < 0 ? x + 1 : x + 7, y + 3, 3, 3, P.snow);
+    g.rect(dir < 0 ? x + 2 : x + 8, y + 4, 1, 1, P.ink);
+    g.rect(x + 2, y + 8, 2, 1, P.topiDark);
+    g.rect(x + 7, y + 8, 2, 1, P.topiDark);
+  }
+
+  function drawBird(g, P, x, y, vx, f) {
+    var up = Math.floor(f) % 2 === 0;
+    g.rect(x + 2, y + 1, 5, 4, P.hawk);
+    g.rect(x + (vx < 0 ? 0 : 6), y + 2, 3, 2, P.gold);
+    g.rect(x + 3, y + 2, 1, 1, P.snow);
+    if (up) { g.rect(x + 1, y - 2, 3, 2, P.hawkWing); g.rect(x + 5, y - 2, 3, 2, P.hawkWing); }
+    else { g.rect(x + 1, y + 4, 3, 2, P.hawkWing); g.rect(x + 5, y + 4, 3, 2, P.hawkWing); }
+  }
+
+  function drawRow(g, P, r) {
+    var y = rowY(r.n) - S.cam;
+    if (y < -BH - 12 || y > H + 4) return;
+    var line = r.kind === 'zoneline';
+    // Each zone is a different rock layer, so you can see how far you have
+    // climbed in the world itself and not only in the sky colour.
+    var strata = P.zoneBlocks[r.z % P.zoneBlocks.length];
+    var c, x;
+
+    for (c = 0; c < COLS; c++) {
+      var t = r.b[c];
+      x = c * BW;
+      if (!t) continue;
+      if (t === ROCK) {
+        g.rect(x, y, BW, BH, P.rock);
+        g.rect(x, y, BW, 2, P.rockTop);
+        g.rect(x, y + BH - 2, BW, 2, P.rockBot);
+        g.rect(x + BW / 2 - 3, y + 3, 6, 2, P.rockBot);
+      } else if (line) {
+        g.rect(x, y, BW, BH, P.gold);
+        g.rect(x, y, BW, 2, P.goldLight);
+        g.rect(x, y + BH - 2, BW, 2, P.redDark);
+      } else {
+        g.rect(x, y, BW, BH, strata.f);
+        g.rect(x, y, BW, 2, strata.t);
+        g.rect(x, y + BH - 2, BW, 2, strata.b);
+        g.rect(x + BW - 1, y, 1, BH, strata.b);
+      }
+    }
+
+    if (T.path) {
+      if (r.kind === 'mixed') {
+        for (c = 0; c < COLS; c++) if (r.b[c] === ICE) g.rect(c * BW + 7, y + BH + 2, 6, 2, P.green);
+      } else if (r.kind !== 'solid' && r.kind !== 'ground') {
+        for (c = 0; c < COLS; c++) if (!r.b[c]) g.rect(c * BW + 7, y + BH + 2, 6, 2, P.accent);
+      }
+    }
+
+    if (r.veg >= 0) {
+      x = r.veg * BW + BW / 2 - 3;
+      g.rect(x, y - 7, 6, 6, P.purple);
+      g.rect(x + 2, y - 9, 2, 2, P.green);
+      g.rect(x + 1, y - 6, 1, 1, P.goldLight);
+    }
+    if (r.topi) drawTopi(g, P, r.topi.x, y - TH, r.topi.dir);
+    // Just the number: at 3x5 pixels a 'Z' and a '2' are almost the same shape.
+    if (line) Arcade.drawTextC(g.ctx, String(r.n / ZONE_ROWS + 1), W / 2, y - 9, 1, P.gold);
+  }
+
+  function drawAvalanche(g, ctx, P) {
+    if (!T.snow) return;
+    var sy = S.snow - S.cam;
+
+    if (sy < H + 8) {
+      for (var x = 0; x < W; x += 4) {
+        var jag = Math.sin(x * 0.4 + S.wave) * 3 + Math.sin(x * 0.13 - S.wave * 0.7) * 2;
+        var top = sy + jag;
+        g.rect(x, top, 4, H - top + 6, P.snowMass);
+        g.rect(x, top, 4, 3, P.snow);
+      }
+    }
+
+    var below = sy - H;
+    if (below > 0 && below < 150) {
+      var a = (1 - below / 150) * 0.5;
+      ctx.fillStyle = 'rgba(' + P.dangerRgb + ',' + a.toFixed(2) + ')';
+      ctx.fillRect(0, H - 12, W, 12);
+    }
+  }
+
+  // A slot per piece of gear, filled for what you carry, plus the pips toward
+  // the next one. This is what makes you ask what the next piece is.
+  function drawKitBar(g, P, x, y, level, pips, cost, best) {
+    var wide = KIT_MAX * 8 + (cost > 0 ? cost * 4 + 3 : 0);
+    g.ctx.fillStyle = P.panel;
+    g.ctx.fillRect(x - 2, y - 2, wide + 3, 10);
+    for (var i = 0; i < KIT_MAX; i++) {
+      var sx = x + i * 8;
+      var have = i < level;
+      var seen = i < best;
+      g.rect(sx, y, 6, 6, have ? P.gold : (seen ? P.textDim : P.panelEdge));
+      if (have) g.rect(sx + 1, y + 1, 4, 4, P.goldLight);
+      else if (!seen) g.rect(sx + 2, y + 2, 2, 2, P.panel);
+    }
+    if (cost > 0) {
+      for (var k = 0; k < cost; k++) {
+        g.rect(x + KIT_MAX * 8 + 3 + k * 4, y + 2, 3, 3, k < pips ? P.green : P.panelEdge);
+      }
+    }
+  }
+
+  function draw(g, ctx) {
+    var P = g.pal;
+    var i;
+
+    S.wave += 0.09;
+
+    ctx.fillStyle = P.zoneBg[S.zone % P.zoneBg.length];
+    ctx.fillRect(0, 0, W, H);
+
+    for (i = 0; i < 44; i++) {
+      var sx = Arcade.hash(i) * W;
+      var sy = ((Arcade.hash(i + 90) * 900 - S.cam * 0.3) % (H + 30) + H + 30) % (H + 30) - 15;
+      g.rect(sx, sy, 1, 1, i % 5 === 0 ? P.star : P.starDim);
+    }
+
+    for (i = 0; i < S.rows.length; i++) drawRow(g, P, S.rows[i]);
+
+    for (i = 0; i < S.birds.length; i++) {
+      var b = S.birds[i];
+      drawBird(g, P, b.x, b.y - S.cam, b.vx, b.f);
+    }
+
+    for (i = 0; i < S.parts.length; i++) {
+      var q = S.parts[i];
+      g.rect(q.x, q.y - S.cam, 2, 2, P[q.tone]);
+    }
+
+    var py = S.p.y - S.cam;
+    if (!(S.hurt > 0 && Math.floor(S.hurt * 18) % 2 === 0)) {
+      drawPlayer(g, P, S.p.x, py);
+    }
+    if (S.fly > 0) drawCondor(g, P, S.p.x, py, S.fly);
+
+    drawAvalanche(g, ctx, P);
+
+    if (T.kit && g.state === 'play') {
+      drawKitBar(g, P, 2, 24, S.kit, S.veg, T.kitCost, bestKit());
+    }
+
+    if (S.zoneFlash > 0) {
+      ctx.fillStyle = P.panel;
+      ctx.fillRect(0, 54, W, 32);
+      Arcade.drawTextC(ctx, 'ZONE ' + (S.zone + 1), W / 2, 60, 2, P.gold);
+      Arcade.drawTextC(ctx, '+25', W / 2, 78, 1, P.green);
+    }
+
+    if (S.kitFlash > 0) {
+      ctx.fillStyle = P.panel;
+      ctx.fillRect(0, 110, W, 30);
+      Arcade.drawTextC(ctx, S.kitName, W / 2, 116, 2, P.gold);
+      var idx = KIT.map(function (e) { return e.name; }).indexOf(S.kitName);
+      if (idx >= 0) Arcade.drawTextC(ctx, KIT[idx].note, W / 2, 132, 1, P.green);
+    }
+
+    // Ice Climber shows the floor number on the walls. There are no walls
+    // here, so it sits in the corner.
+    if (T.floorNo && g.state === 'play') {
+      var floor = Math.max(0, Math.round(-S.bestY / T.rowGap));
+      var label = 'F' + floor;
+      var lw = Arcade.textWidth(label, 1);
+      ctx.fillStyle = P.panel;
+      ctx.fillRect(W - lw - 5, 1, lw + 5, 9);
+      Arcade.drawText(ctx, label, W - lw - 3, 3, 1, P.textDim);
+    }
+
+    if (T.mech === STREAK && S.streak > 1 && g.state === 'play') {
+      Arcade.drawTextC(ctx, 'x' + S.streak, W / 2, 22, 1, P.green);
+    }
+
+    // On the title screen the kit is the collection: dark slots are pieces
+    // you have never reached.
+    if (T.kit && g.state !== 'play') {
+      var best = bestKit();
+      Arcade.drawTextC(ctx, 'THE KIT', W / 2, 232, 1, P.textDim);
+      // level = best here, so every piece you have ever reached shows as found
+      drawKitBar(g, P, W / 2 - (KIT_MAX * 8 - 2) / 2, 242, best, 0, 0, best);
+      if (best >= KIT_MAX) Arcade.drawTextC(ctx, 'ALL FOUND', W / 2, 254, 1, P.gold);
+    }
+
+    if (g.noSave) {
+      ctx.fillStyle = P.panel;
+      ctx.fillRect(0, 1, 27, 9);
+      Arcade.drawText(ctx, 'TUNED', 3, 3, 1, P.textDim);
+    }
+  }
+
+  var game = Arcade.create({
+    id: 'icy-hopper',
+    name: 'ICY HOPPER',
+    tagline: 'CLIMB THE ICE, NEVER STOP',
+    how: ['HOLD A SIDE TO STEER.', 'TAKE VEGGIES FOR GEAR.', 'ONLY THE SNOW KILLS YOU.'],
+    palette: {
+      // Topi and the hawk must read against the rock in BOTH themes, so they
+      // invert: light body on the dark sky, dark body on the light sky.
+      dark: {
+        topi: '#9ae4a0', topiDark: '#2f7a44',
+        hawk: '#f2f7fb', hawkWing: '#b9c8d8',
+        snowMass: '#cfe9f6', snow: '#ffffff',
+        zoneBg: ['#0b1220', '#0e1526', '#151129', '#1c1024', '#0a1a24', '#101b2e'],
+        zoneBlocks: [
+          { f: '#4a8f4a', t: '#7ccc7c', b: '#2c5c2c' },   // grass and moss
+          { f: '#b5722f', t: '#e0a05a', b: '#7a4a1c' },   // brick
+          { f: '#48a8c4', t: '#a9e9f7', b: '#2b6d85' },   // ice
+          { f: '#8a5ec9', t: '#c49ff0', b: '#563a80' },   // crystal
+          { f: '#2f9a8f', t: '#6fd8c9', b: '#1c6159' },   // jade
+          { f: '#5b6f8f', t: '#9db3d0', b: '#3a4a63' }    // slate
+        ]
+      },
+      light: {
+        topi: '#2f7a44', topiDark: '#163d22',
+        hawk: '#3f5468', hawkWing: '#6b8296',
+        snowMass: '#ffffff', snow: '#ffffff',
+        zoneBg: ['#d3eaf7', '#cfe1f5', '#dcd9f2', '#f0d9ec', '#d3f0ec', '#dde8f7'],
+        zoneBlocks: [
+          { f: '#5aa54a', t: '#93d97e', b: '#3b7a32' },
+          { f: '#d08a3a', t: '#f5c07a', b: '#96601f' },
+          { f: '#5fbad7', t: '#ffffff', b: '#2c7c9a' },
+          { f: '#9a6fd8', t: '#d2b6f5', b: '#6a4a9c' },
+          { f: '#3ab3a4', t: '#8fe8da', b: '#237a6f' },
+          { f: '#6f85a8', t: '#b4c6de', b: '#4a5c78' }
+        ]
+      }
+    },
+    setup: setup, update: update, draw: draw
+  });
+
+  Debug.bind(game);
+})();
+</script>
+</body>
+</html>

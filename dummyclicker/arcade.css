@@ -1,0 +1,111 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* Light is the base. The dark values are repeated twice on purpose: once for
+   the device setting, once for the explicit toggle, so both directions win. */
+:root {
+  --page: #dbe9f2;
+  --bar: #eef6fb;
+  --bar-line: #bcd3e2;
+  --link: #0d7ea3;
+  --link-on: #0a6180;
+  --muted: #64798c;
+  --canvas: #bfe2f2;
+  --btn: #d6e8f2;
+  --btn-ink: #0f5c78;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #07090f;
+    --bar: #0b0f19;
+    --bar-line: #161d2c;
+    --link: #6fd3e8;
+    --link-on: #a9e9f7;
+    --muted: #4d5c73;
+    --canvas: #0d0f18;
+    --btn: #141c2a;
+    --btn-ink: #8fd6e8;
+  }
+}
+
+:root[data-theme="dark"] {
+  --page: #07090f;
+  --bar: #0b0f19;
+  --bar-line: #161d2c;
+  --link: #6fd3e8;
+  --link-on: #a9e9f7;
+  --muted: #4d5c73;
+  --canvas: #0d0f18;
+  --btn: #141c2a;
+  --btn-ink: #8fd6e8;
+}
+
+html, body {
+  height: 100%;
+  background: var(--page);
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--muted);
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+#bar {
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 10px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  background: var(--bar);
+  border-bottom: 1px solid var(--bar-line);
+}
+
+#bar a { color: var(--link); text-decoration: none; }
+#bar a:active { color: var(--link-on); }
+#bar span { color: var(--muted); }
+
+.theme-toggle {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--btn-ink);
+  background: var(--btn);
+  border: 1px solid var(--bar-line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.theme-toggle:active { border-color: var(--link); }
+
+#stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+canvas {
+  display: block;
+  background: var(--canvas);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+}

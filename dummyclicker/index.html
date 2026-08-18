@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>DummyClicker &mdash; two prototypes</title>
+<script src="theme.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --page: #dbe9f2; --card: #ffffff; --line: #bfd6e4; --line-soft: #d3e4ee;
+    --head: #0f1c28; --body: #4e6478; --muted: #7089a0;
+    --accent: #0d7ea3; --gold: #a8760a;
+    --bar: #eef6fb; --btn: #d6e8f2; --btn-ink: #0f5c78;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --page: #07090f; --card: #0c1119; --line: #18212f; --line-soft: #16202e;
+      --head: #f2f7fb; --body: #62748c; --muted: #3d4b60;
+      --accent: #6fd3e8; --gold: #f2c14e;
+      --bar: #0b0f19; --btn: #141c2a; --btn-ink: #8fd6e8;
+    }
+  }
+  :root[data-theme="dark"] {
+    --page: #07090f; --card: #0c1119; --line: #18212f; --line-soft: #16202e;
+    --head: #f2f7fb; --body: #62748c; --muted: #3d4b60;
+    --accent: #6fd3e8; --gold: #f2c14e;
+    --bar: #0b0f19; --btn: #141c2a; --btn-ink: #8fd6e8;
+  }
+
+  html, body { background: var(--page); min-height: 100%; }
+  body {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--body);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    padding-bottom: calc(44px + env(safe-area-inset-bottom));
+  }
+
+  #bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+    background: var(--bar); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0;
+  }
+  #bar h1 { color: var(--head); font-size: 15px; letter-spacing: .18em; font-weight: 700; }
+
+  .theme-toggle {
+    margin-left: auto; width: 30px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    font: inherit; font-size: 14px; line-height: 1;
+    color: var(--btn-ink); background: var(--btn);
+    border: 1px solid var(--line); border-radius: 5px; cursor: pointer;
+  }
+  .theme-toggle:active { border-color: var(--accent); }
+
+  main { max-width: 620px; margin: 0 auto; padding: 18px 16px 0; }
+  .sub { font-size: 11px; line-height: 1.7; color: var(--muted); margin-bottom: 20px; }
+  .sub b { color: var(--body); font-weight: 400; }
+
+  a.card {
+    display: block; text-decoration: none;
+    background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px; margin-bottom: 10px;
+  }
+  a.card:active { border-color: var(--accent); }
+  .name { color: var(--head); font-size: 14px; letter-spacing: .1em; }
+  .tag { color: var(--accent); font-size: 10px; margin: 6px 0 8px; }
+  .desc { color: var(--body); font-size: 11px; line-height: 1.6; }
+  .ctl { color: var(--gold); font-size: 10px; margin-top: 9px; letter-spacing: .06em; }
+
+  h2 {
+    font-size: 10px; letter-spacing: .22em; color: var(--accent);
+    margin: 26px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line-soft);
+  }
+  ol { margin: 0 0 0 16px; font-size: 11px; line-height: 1.9; color: var(--body); }
+  footer { margin-top: 24px; font-size: 10px; color: var(--muted); line-height: 1.8; }
+</style>
+</head>
+<body>
+  <header id="bar"><h1>DUMMYCLICKER</h1></header>
+
+  <main>
+    <p class="sub">Two small prototypes. Both are <b>portrait, one thumb, no menus</b> &mdash;
+    you tap once and you are playing. They are meant for the moment you are tired and just
+    want something to do. Best on a phone.</p>
+
+    <a class="card" href="icy-hopper.html?share=1&amp;mech=1">
+      <div class="name">ICY HOPPER</div>
+      <div class="tag">Climb the ice, never stop</div>
+      <div class="desc">You bounce upward by yourself, so the only thing you do is steer.
+      Hold the left or right half of the screen. Aim for the holes in the floors. A floor with
+      no hole you break with your head. Snow rises from below and it is the only thing that
+      kills you &mdash; the birds and the seals just knock you down. Purple veggies build your
+      kit: boots, then a pick, then springs, then a fur coat, and then a condor picks you
+      up.</div>
+      <div class="ctl">HOLD LEFT OR RIGHT HALF</div>
+    </a>
+
+    <a class="card" href="igloo-stacker.html">
+      <div class="name">IGLOO STACKER</div>
+      <div class="tag">One tap, one block</div>
+      <div class="desc">An ice block slides side to side. Tap to drop it on the tower. The part
+      that hangs over the edge falls off, and the next block is that much smaller. A perfect
+      drop grows it back.</div>
+      <div class="ctl">TAP ANYWHERE</div>
+    </a>
+
+    <h2>WHAT I WOULD LIKE TO KNOW</h2>
+    <ol>
+      <li>Did you understand what to do without being told?</li>
+      <li>Does it feel good in the thumb, or do you have to stretch?</li>
+      <li>Did you want to play again after you died? How many times?</li>
+      <li>Which of the two would you keep?</li>
+    </ol>
+
+    <footer>
+      The high score is saved on your own device only. Nothing is uploaded.<br>
+      The button at the top right switches light and dark.<br>
+      On a computer: SPACE to tap, LEFT and RIGHT arrows to steer.
+    </footer>
+  </main>
+</body>
+</html>
