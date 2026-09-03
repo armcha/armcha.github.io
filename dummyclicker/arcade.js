@@ -15,39 +15,16 @@
 (function (global) {
   'use strict';
 
-  var W = 180;
-  var H = 320;
+  var BASE_W = 180;
+  var BASE_H = 320;
+  var W = BASE_W;          // the default logical screen; a game may ask for more
+  var H = BASE_H;
   var STEP = 1 / 60;
 
   /* ---- palettes ------------------------------------------------------ */
 
   var BASE = {
-    dark: {
-      bg: '#0b1220',
-      star: '#54708f', starDim: '#33445c',
-      ice: '#48a8c4', ice2: '#3f95b0', iceTop: '#a9e9f7', iceBot: '#2b6d85', iceEdge: '#7fd0e4',
-      snow: '#e6f6fc',
-      rock: '#5b6472', rockTop: '#8a93a3', rockBot: '#3b4350',
-      wall: '#16283c', wallEdge: '#22415f', wallSpec: '#1d3550',
-      spike: '#2f6f8c', spikeTeeth: '#bfe9f7', flake: '#2c4460',
-      grass: '#22402c', grassLight: '#2e5439', grassDark: '#1a3323', grassTuft: '#356140',
-      ballast: '#2b2f38', sleeper: '#4a3a2c', rail: '#7b8494',
-      road: '#33383f', roadLine: '#8a93a3', roadEdge: '#c8d5e2',
-      mountain: '#16283c', floorIce: '#22415f',
-      ink: '#12202e', skin: '#f4d3b0', parka: '#3f7fd0', parkaDark: '#2f5d8a',
-      red: '#e05a4b', redDark: '#c04638', gold: '#f2c14e', goldLight: '#fff0b8',
-      green: '#6cbf5a', purple: '#a15ec9', accent: '#6fd3e8',
-      birdBody: '#e8eef5', birdWing: '#c8d5e2',
-      condor: '#3a3f4c', condorLight: '#5a6070', condorDark: '#2a2e39', condorWing: '#6a7182',
-      penguin: '#1a2433', penguinBelly: '#f2f7fb',
-      text: '#f2f7fb', textDim: '#7f93ad',
-      panel: 'rgba(7,10,18,0.82)', panelEdge: 'rgba(111,211,232,0.35)',
-      hudInk: '#ffffff', hudOut: 'rgba(6,9,16,0.85)',
-      shadow: 'rgba(0,0,0,0.35)', gloss: 'rgba(255,255,255,0.30)', shade: 'rgba(0,0,0,0.35)',
-      flashRgb: '108,191,90', dangerRgb: '224,90,75',
-      trains: ['#e05a4b', '#f2c14e', '#6cbf5a', '#c07be0', '#e8eef5'],
-      cars: ['#e05a4b', '#f2c14e', '#6cbf5a', '#c07be0', '#e8eef5', '#4f8fe0']
-    },
+    // Daylight only. The dark half of this palette was removed with night mode.
     light: {
       bg: '#d3eaf7',
       star: '#ffffff', starDim: '#a8cee2',
@@ -85,24 +62,35 @@
 
   /* ---- 3x5 pixel font ------------------------------------------------ */
 
+  // 5x7. The old font was 3x5, the smallest a pixel font can be, where S and
+  // 5, B and 8, and most of the round letters share the same shape. Five wide
+  // by seven tall is the first size with room for a real letterform.
+  var GLYPH_W = 5, GLYPH_H = 7, GLYPH_GAP = 1;
   var GLYPHS = {
-    'A': '111101111101101', 'B': '110101110101110', 'C': '111100100100111',
-    'D': '110101101101110', 'E': '111100111100111', 'F': '111100111100100',
-    'G': '111100101101111', 'H': '101101111101101', 'I': '111010010010111',
-    'J': '001001001101111', 'K': '101101110101101', 'L': '100100100100111',
-    'M': '101111111101101', 'N': '110101101101101', 'O': '111101101101111',
-    'P': '111101111100100', 'Q': '111101101111001', 'R': '111101110101101',
-    'S': '111100111001111', 'T': '111010010010010', 'U': '101101101101111',
-    'V': '101101101101010', 'W': '101101111111101', 'X': '101101010101101',
-    'Y': '101101010010010', 'Z': '111001010100111',
-    '0': '111101101101111', '1': '010110010010111', '2': '111001111100111',
-    '3': '111001111001111', '4': '101101111001001', '5': '111100111001111',
-    '6': '111100111101111', '7': '111001001001001', '8': '111101111101111',
-    '9': '111101111001111',
-    ' ': '000000000000000', '.': '000000000000010', ':': '000010000010000',
-    '!': '010010010000010', '-': '000000111000000', '/': '001001010100100',
-    '+': '000010111010000', '?': '111001011000010', ',': '000000000010100',
-    "'": '010010000000000', '*': '101010101000000', '%': '101001010100101'
+    'A': '01110100011000111111100011000110001', 'B': '11110100011000111110100011000111110',
+    'C': '01110100011000010000100001000101110', 'D': '11110100011000110001100011000111110',
+    'E': '11111100001000011110100001000011111', 'F': '11111100001000011110100001000010000',
+    'G': '01110100011000010111100011000101110', 'H': '10001100011000111111100011000110001',
+    'I': '11111001000010000100001000010011111', 'J': '00111000100001000010000101001001100',
+    'K': '10001100101010011000101001001010001', 'L': '10000100001000010000100001000011111',
+    'M': '10001110111010110101100011000110001', 'N': '10001110011010110011100011000110001',
+    'O': '01110100011000110001100011000101110', 'P': '11110100011000111110100001000010000',
+    'Q': '01110100011000110001101011001001101', 'R': '11110100011000111110101001001010001',
+    'S': '01111100001000001110000010000111110', 'T': '11111001000010000100001000010000100',
+    'U': '10001100011000110001100011000101110', 'V': '10001100011000110001100010101000100',
+    'W': '10001100011000110101101011101110001', 'X': '10001100010101000100010101000110001',
+    'Y': '10001100010101000100001000010000100', 'Z': '11111000010001000100010001000011111',
+    '0': '01110100011001110101110011000101110', '1': '00100011000010000100001000010011111',
+    '2': '01110100010000100010001000100011111', '3': '11111000100010000010000011000101110',
+    '4': '00010001100101010010111110001000010', '5': '11111100001111000001000011000101110',
+    '6': '00110010001000011110100011000101110', '7': '11111000010001000100010000100001000',
+    '8': '01110100011000101110100011000101110', '9': '01110100011000101111000010001001100',
+    ' ': '00000000000000000000000000000000000', '!': '00100001000010000100001000000000100',
+    '%': '11001110010001000100010001001110011', '*': '00000101010111011111011101010100000',
+    '+': '00000001000010011111001000010000000', ',': '00000000000000000000001000010001000',
+    '-': '00000000000000011111000000000000000', '.': '00000000000000000000000000110001100',
+    '/': '00001000100001000100010000100010000', ':': '00000011000110000000011000110000000',
+    '?': '01110100010000100010001000000000100'
   };
 
   function drawText(ctx, str, x, y, scale, color) {
@@ -114,21 +102,21 @@
     for (var i = 0; i < str.length; i++) {
       var gl = GLYPHS[str.charAt(i)];
       if (gl) {
-        for (var r = 0; r < 5; r++) {
-          for (var c = 0; c < 3; c++) {
-            if (gl.charAt(r * 3 + c) === '1') {
+        for (var r = 0; r < GLYPH_H; r++) {
+          for (var c = 0; c < GLYPH_W; c++) {
+            if (gl.charAt(r * GLYPH_W + c) === '1') {
               ctx.fillRect(cx + c * scale, cy + r * scale, scale, scale);
             }
           }
         }
       }
-      cx += 4 * scale;
+      cx += (GLYPH_W + GLYPH_GAP) * scale;
     }
   }
 
   function textWidth(str, scale) {
     scale = scale || 1;
-    return String(str).length * 4 * scale - scale;
+    return String(str).length * (GLYPH_W + GLYPH_GAP) * scale - GLYPH_GAP * scale;
   }
 
   function drawTextC(ctx, str, cx, y, scale, color) {
@@ -149,6 +137,18 @@
   /* ---- runtime ------------------------------------------------------- */
 
   function create(cfg) {
+    // cfg.res multiplies the logical screen. res 2 gives 360x640, which is
+    // four times the pixels to draw into, so sprites can carry real detail.
+    // Everything the runtime draws scales with it; a game scales its own
+    // constants the same way.
+    var u = cfg.res || 1;
+    // A game may narrow or shorten the logical screen in base units. Icy
+    // Hopper passes baseW 160 to show eight 60px columns instead of nine: same
+    // art, same block, one column fewer across, so every pixel is 12.5% wider
+    // on the phone. That is how it zooms without moving sprites off their grid.
+    var W = (cfg.baseW || BASE_W) * u;
+    var H = (cfg.baseH || BASE_H) * u;
+
     var canvas = document.getElementById('c');
     var stage = document.getElementById('stage');
     var ctx = canvas.getContext('2d');
@@ -160,14 +160,28 @@
       var s = Math.min(stage.clientWidth / W, stage.clientHeight / H);
       canvas.style.width = Math.max(1, Math.floor(W * s)) + 'px';
       canvas.style.height = Math.max(1, Math.floor(H * s)) + 'px';
+      // Nearest-neighbour is right when a pixel is being made BIGGER: it keeps
+      // the edges hard. It is wrong when the canvas is being made smaller, which
+      // is what happens with a 540 wide screen on a 390 wide phone: it throws
+      // whole rows of pixels away, so one stroke of a letter survives at three
+      // pixels and the next at two, and the text looks broken rather than sharp.
+      // Below 1:1 let the browser average instead - softer, but every stroke
+      // comes out the same weight.
+      canvas.style.imageRendering = s >= 1 ? 'pixelated' : 'auto';
     }
     window.addEventListener('resize', resize);
     window.addEventListener('orientationchange', function () { setTimeout(resize, 80); });
     resize();
 
     var over = cfg.palette || {};
-    function paletteFor(theme) {
-      return merge(BASE[theme] || BASE.dark, over[theme]);
+    function paletteFor() {
+      var base = BASE.light;
+      var over = cfg.palette && cfg.palette.light;
+      if (!over) return base;
+      var out = {}, k;
+      for (k in base) if (base.hasOwnProperty(k)) out[k] = base[k];
+      for (k in over) if (over.hasOwnProperty(k)) out[k] = over[k];
+      return out;
     }
 
     var KEY = 'dc.hi.' + cfg.id;
@@ -179,8 +193,8 @@
     var keyLeft = false, keyRight = false, keyAct = false;
 
     var g = {
-      W: W, H: H, ctx: ctx,
-      pal: paletteFor(global.Theme ? global.Theme.get() : 'dark'),
+      W: W, H: H, u: u, ctx: ctx,
+      pal: paletteFor(),
       state: 'ready',
       score: 0,
       hi: hi,
@@ -188,6 +202,9 @@
       t: 0,
       deadFor: 0,
       shake: 0,
+      ss: 1,                             // backing-store multiplier, see render()
+      control: cfg.control || 'sides',   // 'sides', 'follow' or 'both' - see the input section
+      touching: false, touchX: 0, touchY: 0, touchDrag: false,
       tapped: false,
       tapX: 0, tapY: 0, tapSide: 0,
       held: false,
@@ -229,9 +246,6 @@
       }
     };
 
-    if (global.Theme) {
-      global.Theme.onChange(function (theme) { g.pal = paletteFor(theme); });
-    }
 
     /* ---- input ---- */
 
@@ -243,9 +257,31 @@
       };
     }
 
+    // Three ways to steer, chosen by g.control.
+    //
+    // 'sides'   where the finger IS decides: left half steers left, right half
+    //           right, for as long as it is down. Stops when it lifts.
+    //
+    // 'follow'  the finger DRAGS the climber. Each move's horizontal travel is
+    //           added to g.dragDx and the game applies it directly: move and
+    //           it moves with you, stop and it stops, lift and it stops.
+    //
+    // 'both'    a touch starts as a side hold and BECOMES a drag the moment it
+    //           travels more than DRAG_START. So a tap or a still finger steers
+    //           by side, and a slide steers by movement - the two never fight,
+    //           because a touch is only ever one of them at a time, and the
+    //           side hold is dropped for good once the slide begins.
+    //
+    // Every touch also reports where it is, so the game can draw a joystick.
+    var DRAG_START = 8;                 // logical px before a hold becomes a drag
+    var touches = new Map();            // id -> { x0, x, y, drag }
+    var moveAcc = 0;
+
     canvas.addEventListener('pointerdown', function (e) {
       var p = localPos(e.clientX, e.clientY);
-      var side = p.x < W / 2 ? -1 : 1;
+      var mode = g.control;
+      var side = mode === 'follow' ? 0 : (p.x < W / 2 ? -1 : 1);
+      touches.set(e.pointerId, { x0: p.x, x: p.x, y: p.y, drag: mode === 'follow' });
       active.set(e.pointerId, side);
       queue.push({ x: p.x, y: p.y, side: side });
       if (canvas.setPointerCapture) { try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } }
@@ -253,18 +289,33 @@
     }, { passive: false });
 
     canvas.addEventListener('pointermove', function (e) {
-      if (!active.has(e.pointerId)) return;
+      var t = touches.get(e.pointerId);
+      if (!t) return;
       var p = localPos(e.clientX, e.clientY);
-      active.set(e.pointerId, p.x < W / 2 ? -1 : 1);
+      if (g.control === 'sides') {
+        active.set(e.pointerId, p.x < W / 2 ? -1 : 1);
+      } else if (t.drag) {
+        moveAcc += p.x - t.x;
+      } else if (Math.abs(p.x - t.x0) > DRAG_START) {
+        // The hold becomes a drag. The travel so far was the cost of deciding,
+        // not steering, so accumulation starts from here.
+        t.drag = true;
+        active.set(e.pointerId, 0);
+      }
+      t.x = p.x; t.y = p.y;
       e.preventDefault();
     }, { passive: false });
 
-    function release(e) { active.delete(e.pointerId); }
+    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    function release(e) { active.delete(e.pointerId); touches.delete(e.pointerId); }
     canvas.addEventListener('pointerup', release);
     canvas.addEventListener('pointercancel', release);
     window.addEventListener('pointerup', release);
     window.addEventListener('blur', function () {
       active.clear();
+      touches.clear();
+      moveAcc = 0;
       keyLeft = keyRight = keyAct = false;
     });
 
@@ -300,6 +351,17 @@
       else if (keyRight) side = 1;
       g.held = active.size > 0 || keyLeft || keyRight || keyAct;
       g.heldSide = side;
+      // The finger's travel since the last step, in logical px. Consumed here
+      // so a slow browser frame delivers one big step rather than a repeat.
+      g.dragDx = moveAcc;
+      moveAcc = 0;
+      // Where the (last) finger is, for the on-screen joystick.
+      var t = null;
+      touches.forEach(function (v) { t = v; });
+      g.touching = !!t;
+      g.touchX = t ? t.x : 0;
+      g.touchY = t ? t.y : 0;
+      g.touchDrag = !!(t && t.drag);
     }
 
     /* ---- loop ---- */
@@ -329,56 +391,71 @@
 
     function panel(y, h) {
       ctx.fillStyle = g.pal.panel;
-      ctx.fillRect(0, y, W, h);
+      ctx.fillRect(0, y * u, W, h * u);
       ctx.fillStyle = g.pal.panelEdge;
-      ctx.fillRect(0, y, W, 1);
-      ctx.fillRect(0, y + h - 1, W, 1);
+      ctx.fillRect(0, y * u, W, u);
+      ctx.fillRect(0, (y + h) * u - u, W, u);
     }
 
+    // Every HUD position and text size is written in base units and
+    // multiplied by u, so the overlay looks the same at any resolution.
     function drawHud() {
       var P = g.pal;
 
       if (g.state === 'play') {
         if (cfg.hud !== false) {
-          drawTextCO(ctx, String(Math.floor(g.score)), W / 2, 7, 2, P.hudInk, P.hudOut);
+          drawTextCO(ctx, String(Math.floor(g.score)), W / 2, 7 * u, 2 * u, P.hudInk, P.hudOut);
         }
         return;
       }
 
       if (g.state === 'ready') {
         panel(86, 138);
-        drawTextC(ctx, cfg.name, W / 2, 98, 2, P.text);
-        if (cfg.tagline) drawTextC(ctx, cfg.tagline, W / 2, 116, 1, P.textDim);
+        drawTextC(ctx, cfg.name, W / 2, 98 * u, 2 * u, P.text);
+        if (cfg.tagline) drawTextC(ctx, cfg.tagline, W / 2, 116 * u, u, P.textDim);
         var lines = cfg.how || ['TAP TO PLAY'];
         if (typeof lines === 'string') lines = [lines];
         for (var i = 0; i < lines.length; i++) {
-          drawTextC(ctx, lines[i], W / 2, 140 + i * 9, 1, P.accent);
+          drawTextC(ctx, lines[i], W / 2, (140 + i * 9) * u, u, P.accent);
         }
-        drawTextC(ctx, 'BEST ' + g.hi, W / 2, 178, 1, P.gold);
+        drawTextC(ctx, 'BEST ' + g.hi, W / 2, 178 * u, u, P.gold);
         if (Math.floor(performance.now() / 450) % 2 === 0) {
-          drawTextC(ctx, 'TAP TO START', W / 2, 202, 1, P.text);
+          drawTextC(ctx, 'TAP TO START', W / 2, 202 * u, u, P.text);
         }
         return;
       }
 
       panel(96, 116);
-      drawTextC(ctx, 'GAME OVER', W / 2, 108, 2, P.red);
-      drawTextC(ctx, 'SCORE ' + Math.floor(g.score), W / 2, 132, 1, P.text);
-      drawTextC(ctx, 'BEST ' + g.hi, W / 2, 146, 1, P.gold);
-      if (g.newBest) drawTextC(ctx, 'NEW BEST!', W / 2, 162, 1, P.green);
+      drawTextC(ctx, 'GAME OVER', W / 2, 108 * u, 2 * u, P.red);
+      drawTextC(ctx, 'SCORE ' + Math.floor(g.score), W / 2, 132 * u, u, P.text);
+      drawTextC(ctx, 'BEST ' + g.hi, W / 2, 146 * u, u, P.gold);
+      if (g.newBest) drawTextC(ctx, 'NEW BEST!', W / 2, 162 * u, u, P.green);
       if (g.deadFor > 0.45 && Math.floor(g.deadFor * 2) % 2 === 0) {
-        drawTextC(ctx, 'TAP TO RETRY', W / 2, 186, 1, P.accent);
+        drawTextC(ctx, 'TAP TO RETRY', W / 2, 186 * u, u, P.accent);
       }
     }
 
+    // g.ss is the backing-store multiplier. At 2 the canvas holds four times
+    // the pixels of the logical screen and every draw call is scaled up
+    // through the transform, so integer-aligned pixel art lands on whole
+    // device pixels instead of being smeared by a fractional upscale. A phone
+    // with a 3x display gets a 1.4x smooth step instead of a 2.7x one, which is
+    // most of the difference between soft and crisp. The game sets it from a
+    // dial each frame; the backing store is rebuilt only when it changes.
     function render() {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      var ss = g.ss > 1 ? 2 : 1;
+      if (canvas.width !== W * ss) {
+        canvas.width = W * ss;
+        canvas.height = H * ss;
+        ctx.imageSmoothingEnabled = false;   // resizing a canvas resets this
+      }
+      ctx.setTransform(ss, 0, 0, ss, 0, 0);
       ctx.fillStyle = g.pal.bg;
       ctx.fillRect(0, 0, W, H);
       ctx.save();
       if (g.shake > 0.01) {
-        ctx.translate(Math.round((Math.random() * 2 - 1) * g.shake),
-                      Math.round((Math.random() * 2 - 1) * g.shake));
+        ctx.translate(Math.round((Math.random() * 2 - 1) * g.shake * u),
+                      Math.round((Math.random() * 2 - 1) * g.shake * u));
       }
       cfg.draw(g, ctx);
       ctx.restore();

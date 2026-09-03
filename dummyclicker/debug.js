@@ -21,13 +21,24 @@
     '.dbg-seg button,.dbg-toggles button{flex:1 1 auto;padding:8px 4px;font:inherit;font-size:9px;',
     'letter-spacing:.08em;color:var(--muted);background:var(--btn);border:1px solid var(--bar-line);',
     'border-radius:4px;cursor:pointer}',
+    '.dbg-act button.on{border-color:var(--link);color:var(--link)}',
     '.dbg-seg button{min-width:80px}',
     '.dbg-toggles button{min-width:62px}',
     '.dbg-seg button.on,.dbg-toggles button.on{color:var(--btn-ink);border-color:var(--link)}',
     '.dbg-note{margin-top:7px;color:var(--muted);font-size:9px;line-height:1.65;letter-spacing:.03em}',
+    '.dbg-hint{color:var(--muted);font-size:9px;line-height:1.55;letter-spacing:.02em;',
+    'margin:-1px 0 7px 92px;opacity:.85}',
+    '.dbg-hint.flush{margin-left:0;margin-top:5px}',
+    '.dbg-g.hide-hints .dbg-hint{display:none}',
     '.dbg-row{display:flex;align-items:center;gap:8px;padding:2px 0}',
     '.dbg-row span{flex:0 0 84px;color:var(--muted)}',
-    '.dbg-row input[type=range]{flex:1;min-width:0;accent-color:var(--link);height:24px}',
+        // A range input claims every touch it receives, so dragging the drawer
+    // upward with a finger that happens to start on a slider moved the
+    // slider instead of scrolling. pan-y hands vertical gestures back to
+    // the scroller and leaves the horizontal ones, which is all a
+    // horizontal slider ever needs.
+    '.dbg-row input[type=range]{flex:1;min-width:0;accent-color:var(--link);height:26px;',
+    'touch-action:pan-y}',
     '.dbg-row b{flex:0 0 44px;text-align:right;color:var(--btn-ink)}',
     '.dbg-act{display:flex;gap:6px;padding:8px 10px}',
     '.dbg-act button{flex:1;padding:10px;font:inherit;font-size:9px;letter-spacing:.12em;',
@@ -51,7 +62,9 @@
     var defaults = {};
     var byKey = {};
     var game = null;
-    var ui = { rows: {}, segs: {}, toggles: {}, note: null };
+    // One note element per choice field, keyed by field. A single shared slot
+    // would let a second choice group overwrite the first one's note.
+    var ui = { rows: {}, segs: {}, toggles: {}, notes: {}, lives: [] };
 
     fields.forEach(function (f) {
       byKey[f.key] = f;
@@ -86,11 +99,31 @@
       return keys;
     }
 
+    // A fingerprint of one field's declared default. If that default changes -
+    // which is what happens when the game is retuned or rescaled - the stored
+    // value is from a different game and must be dropped, or it silently
+    // overwrites the new one and nothing behaves as written.
+    //
+    // PER FIELD, deliberately. This used to be one fingerprint of all fifty
+    // fields, so changing a single default threw away every value the player
+    // had tuned. That is a data-loss bug wearing the costume of a safety check:
+    // it did far more damage than the stale value it was guarding against.
+    function sigOf(f) {
+      return String(f.value) + (f.type === 'range' ? ':' + f.min + '-' + f.max : '');
+    }
+    var SIGS = {};
+    fields.forEach(function (f) { SIGS[f.key] = sigOf(f); });
+
     if (!share) {
       try {
-        var saved = JSON.parse(localStorage.getItem(KEY) || '{}');
-        Object.keys(saved).forEach(function (k) {
-          if (byKey[k] && typeof saved[k] === typeof defaults[k]) tune[k] = saved[k];
+        var store = JSON.parse(localStorage.getItem(KEY) || '{}');
+        var vals = store.values || {};
+        var sigs = store.sigs || {};
+        Object.keys(vals).forEach(function (k) {
+          if (!byKey[k]) return;                              // field is gone
+          if (typeof vals[k] !== typeof defaults[k]) return;  // type changed
+          if (sigs[k] !== SIGS[k]) return;                    // THIS default moved
+          tune[k] = vals[k];
         });
       } catch (e) { /* ignore a bad stored value */ }
     }
@@ -102,7 +135,10 @@
     if (share) fields.forEach(function (f) { defaults[f.key] = tune[f.key]; });
 
     function save() {
-      try { localStorage.setItem(KEY, JSON.stringify(tune)); } catch (e) { /* ignore */ }
+      var values = {};
+      fields.forEach(function (f) { values[f.key] = tune[f.key]; });
+      try { localStorage.setItem(KEY, JSON.stringify({ sigs: SIGS, values: values })); }
+      catch (e) { /* ignore */ }
     }
 
     function isDefault() {
@@ -123,6 +159,9 @@
     }
 
     function refresh() {
+      ui.lives.forEach(function (l) {
+        try { l.el.textContent = l.f.live(tune); } catch (e) { /* never break the drawer */ }
+      });
       fields.forEach(function (f) {
         if (f.type === 'range' && ui.rows[f.key]) {
           ui.rows[f.key].input.value = tune[f.key];
@@ -131,11 +170,26 @@
           ui.segs[f.key].forEach(function (b, i) {
             b.className = i === tune[f.key] ? 'on' : '';
           });
-          if (f.notes && ui.note) ui.note.textContent = f.notes[tune[f.key]] || '';
+          if (f.notes && ui.notes[f.key]) ui.notes[f.key].textContent = f.notes[tune[f.key]] || '';
         } else if (f.type === 'toggle' && ui.toggles[f.key]) {
           ui.toggles[f.key].className = tune[f.key] ? 'on' : '';
         }
       });
+    }
+
+    // One short line under a control saying what it changes. Ranges and toggles
+    // had no way to carry this at all - only choice groups did - which left most
+    // of the drawer unexplained.
+    function hint(parent, f, flush) {
+      if (!f.note && !f.live) return;
+      var el = document.createElement('div');
+      el.className = flush ? 'dbg-hint flush' : 'dbg-hint';
+      el.textContent = f.note || '';
+      parent.appendChild(el);
+      // A live note recomputes from the current values on every refresh. Some
+      // dials only mean something in combination - jump height against floor
+      // spacing, say - and a number nobody can see is a number nobody checks.
+      if (f.live) ui.lives.push({ f: f, el: el });
     }
 
     function group(title) {
@@ -154,6 +208,7 @@
       host.id = 'debug';
 
       var groups = {};
+      var pendingToggleHints = [];
       fields.forEach(function (f) {
         var name = f.group || 'OPTIONS';
         if (!groups[name]) { groups[name] = group(name); host.appendChild(groups[name]); }
@@ -172,9 +227,10 @@
           });
           g.appendChild(seg);
           if (f.notes) {
-            ui.note = document.createElement('p');
-            ui.note.className = 'dbg-note';
-            g.appendChild(ui.note);
+            var note = document.createElement('p');
+            note.className = 'dbg-note';
+            g.appendChild(note);
+            ui.notes[f.key] = note;
           }
         } else if (f.type === 'range') {
           var row = document.createElement('label');
@@ -192,6 +248,7 @@
           input.addEventListener('change', function () { set(f.key, parseFloat(input.value)); });
           row.appendChild(name2); row.appendChild(input); row.appendChild(out);
           g.appendChild(row);
+          hint(g, f);
           ui.rows[f.key] = { input: input, out: out };
         } else {
           var box = g.querySelector('.dbg-toggles');
@@ -202,7 +259,15 @@
           t.addEventListener('click', function () { set(f.key, !tune[f.key]); });
           box.appendChild(t);
           ui.toggles[f.key] = t;
+          if (f.note) pendingToggleHints.push(f);
         }
+      });
+
+      // Toggles all live in one flex box, so their notes cannot sit under each
+      // button. They are listed together underneath it instead.
+      pendingToggleHints.forEach(function (f) {
+        var host2 = ui.toggles[f.key].parentNode.parentNode;
+        hint(host2, { note: f.label + ' \u2014 ' + f.note }, true);
       });
 
       var act = document.createElement('div');
@@ -211,6 +276,31 @@
       restart.type = 'button';
       restart.textContent = 'RESTART RUN';
       restart.addEventListener('click', function () { if (game && game.restart) game.restart(); });
+      var copy = document.createElement('button');
+      copy.type = 'button';
+      copy.textContent = 'COPY SETUP';
+      copy.addEventListener('click', function () {
+        var parts = [];
+        fields.forEach(function (f) {
+          if (tune[f.key] === defaults[f.key]) return;        // only what was changed
+          var v = f.type === 'toggle' ? (tune[f.key] ? 1 : 0) : tune[f.key];
+          parts.push(encodeURIComponent(f.key) + '=' + encodeURIComponent(v));
+        });
+        var url = global.location.origin + global.location.pathname +
+                  (parts.length ? '?' + parts.join('&') : '');
+        function done(ok) {
+          copy.textContent = ok ? (parts.length + ' CHANGES COPIED') : 'COPY FAILED';
+          copy.classList.toggle('on', ok);
+          setTimeout(function () { copy.textContent = 'COPY SETUP'; copy.classList.remove('on'); }, 2200);
+        }
+        if (global.navigator.clipboard && global.navigator.clipboard.writeText) {
+          global.navigator.clipboard.writeText(url).then(function () { done(true); },
+                                                        function () { done(false); });
+        } else {
+          done(false);
+        }
+      });
+
       var reset = document.createElement('button');
       reset.type = 'button';
       reset.textContent = 'RESET ALL';
@@ -219,7 +309,7 @@
         save(); refresh();
         if (game && game.restart) game.restart();
       });
-      act.appendChild(restart); act.appendChild(reset);
+      act.appendChild(restart); act.appendChild(copy); act.appendChild(reset);
       host.appendChild(act);
 
       document.body.appendChild(host);

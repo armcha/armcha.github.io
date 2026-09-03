@@ -55,6 +55,12 @@ body {
   overscroll-behavior: none;
   -webkit-user-select: none;
   user-select: none;
+  /* iOS fires its own haptic about half a second into any hold it reads as a
+     long press. Holding a side to steer is exactly that, so the phone buzzed
+     partway through every steer - feedback for nothing the player did. Nothing
+     visible ever popped, because a canvas has nothing to select or preview,
+     which is why it read as the game vibrating at random. */
+  -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
@@ -105,6 +111,9 @@ body {
 canvas {
   display: block;
   background: var(--canvas);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   touch-action: none;
