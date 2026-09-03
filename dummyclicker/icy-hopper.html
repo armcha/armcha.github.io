@@ -4,14 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Icy Hopper</title>
-<script src="theme.js?v=111"></script>
-<link rel="stylesheet" href="arcade.css?v=111">
+<script src="theme.js?v=116"></script>
+<link rel="stylesheet" href="arcade.css?v=116">
 </head>
 <body>
 <header id="bar"><a href="index.html">&lsaquo; ALL</a><span>ICY HOPPER</span></header>
 <div id="stage"><canvas id="c"></canvas></div>
-<script src="arcade.js?v=111"></script>
-<script src="debug.js?v=111"></script>
+<script src="arcade.js?v=116"></script>
+<script src="debug.js?v=116"></script>
+<script src="music.js?v=116"></script>
 <script>
 (function () {
   'use strict';
@@ -40,6 +41,9 @@
   var EMPTY = 0, ICE = 1, ROCK = 2, PACKED = 3, BLUEICE = 4, CRACKED = 5,
       WOOD = 6, IRON = 7, POWDER = 8, CRATE = 9, GOLDORE = 10, SNOWCAP = 11,
       HOLLOW = 12, OBSIDIAN = 13, COAL = 14;
+  // One material per place, so a zone is not only its backdrop.
+  var SANDSTONE = 15, BRICK = 16, CORAL = 17, SEAGLASS = 18, CIRCUIT = 19,
+      NEON = 20, MOONROCK = 21, SOLAR = 22, SLAG = 23, MOSSLOG = 24;
 
   var MAT = {};
   MAT[ICE]     = { name: 'ICE',         hits: 1, solid: true,  tone: 'iceTop',  weight: 1,    n: 7 };
@@ -73,6 +77,38 @@
   MAT[COAL]     = { name: 'COAL',       hits: 1, solid: true, tone: 'slateLite', weight: 1.2, n: 9,
                     teach: 'LOOKS HARD, BREAKS EASY' };
 
+  // Ten more, one for a place each. Most are the ordinary two-hit block in the
+  // dress of where they are; three pay, and two look hard and are not.
+  MAT[SANDSTONE] = { name: 'SANDSTONE',  hits: 2, solid: true, tone: 'sandTop',   weight: 1.1, n: 8,  teach: 'TAKES TWO HITS' };
+  MAT[BRICK]     = { name: 'BRICK',      hits: 2, solid: true, tone: 'brickTop',  weight: 1.4, n: 7,  teach: 'TAKES TWO HITS' };
+  MAT[CORAL]     = { name: 'CORAL',      hits: 1, solid: true, tone: 'coralLite', weight: 0.7, n: 10, bonus: 20, teach: 'BREAK IT FOR POINTS' };
+  MAT[SEAGLASS]  = { name: 'SEA GLASS',  hits: 2, solid: true, tone: 'glassLite', weight: 1.0, n: 7,  teach: 'TAKES TWO HITS' };
+  MAT[CIRCUIT]   = { name: 'CIRCUIT',    hits: 1, solid: true, tone: 'trace',     weight: 0.9, n: 9,  bonus: 30, teach: 'BREAK IT FOR POINTS' };
+  MAT[NEON]      = { name: 'NEON PANEL', hits: 1, solid: true, tone: 'neonLite',  weight: 0.8, n: 8,  teach: 'LOOKS HARD, BREAKS EASY' };
+  MAT[MOONROCK]  = { name: 'MOON ROCK',  hits: 2, solid: true, tone: 'moonTop',   weight: 1.3, n: 7,  teach: 'TAKES TWO HITS' };
+  MAT[SOLAR]     = { name: 'SOLAR CELL', hits: 1, solid: true, tone: 'solarLite', weight: 0.6, n: 10, bonus: 15, teach: 'BREAK IT FOR POINTS' };
+  MAT[SLAG]      = { name: 'SLAG',       hits: 1, solid: true, tone: 'slagGlow',  weight: 1.2, n: 9,  teach: 'LOOKS HARD, BREAKS EASY' };
+  MAT[MOSSLOG]   = { name: 'MOSS LOG',   hits: 2, solid: true, tone: 'mossLite',  weight: 0.9, n: 7,  teach: 'TAKES TWO HITS' };
+
+  // How each one comes apart. The chunks are the same everywhere - it is the
+  // extra that says what the thing was made of: ice throws slivers, wood
+  // splinters, glass webs then bursts, a circuit sparks, slag glows.
+  var FXK = {};
+  FXK[ICE] = FXK[BLUEICE] = FXK[CRACKED] = FXK[HOLLOW] = FXK[SNOWCAP] = 'ice';
+  FXK[PACKED] = FXK[POWDER] = 'snow';
+  FXK[WOOD] = FXK[CRATE] = 'wood';
+  FXK[MOSSLOG] = 'leaves';
+  FXK[ROCK] = FXK[MOONROCK] = FXK[COAL] = FXK[OBSIDIAN] = FXK[BRICK] = 'stone';
+  FXK[GOLDORE] = 'gold';
+  FXK[SANDSTONE] = 'sand';
+  FXK[CORAL] = 'coral';
+  FXK[SEAGLASS] = 'glass';
+  FXK[SOLAR] = 'panel';
+  FXK[CIRCUIT] = 'sparks';
+  FXK[NEON] = 'neon';
+  FXK[SLAG] = 'embers';
+  for (var fxId in FXK) MAT[fxId].fx = FXK[fxId];
+
   function isSolid(t) { return !!t && MAT[t].solid; }
 
   var BONK = 0, CLIMB = 1, DRILL = 2, HAMMER = 3, FLIP = 4, STREAK = 5;
@@ -82,11 +118,15 @@
   // swapping character never changes how the game plays - only the drawing
   // changes, and each sprite is placed feet-down inside that same box.
   var CHARS = [
-    { name: 'PENGUIN', w: 30, h: 45 },
-    { name: 'YETI CUB', w: 36, h: 44 },
-    { name: 'SNOW ROBOT', w: 30, h: 47 },
-    { name: 'MOUNTAIN GOAT', w: 44, h: 38 },
-    { name: 'ASTRONAUT', w: 30, h: 46 }
+    { name: 'PENGUIN', w: 30, h: 45, pool: true },
+    { name: 'SNOW ROBOT', w: 30, h: 45, pool: true },
+    { name: 'POLAR CUB', w: 30, h: 45, pool: true },
+    { name: 'ICE CUBE', w: 30, h: 45, pool: true },
+    { name: 'SNOWMAN', w: 30, h: 45, pool: true },
+    { name: 'COCOA MUG', w: 30, h: 45, pool: true },
+    { name: 'TRAFFIC CONE', w: 30, h: 45, pool: true },
+    { name: 'CACTUS', w: 30, h: 45, pool: true },
+    { name: 'ICE CREAM', w: 30, h: 45, pool: true }
   ];
 
   // Four steps, then the condor and back to the start. There is deliberately no
@@ -102,6 +142,147 @@
   // The condor is the fourth piece and the reset of the whole loop. Off, the
   // kit stops at three and a full kit pays a bonus instead of a flight.
   function kitMax() { return T.condor ? KIT_MAX : KIT_MAX - 1; }
+
+  /* ---- sound -----------------------------------------------------------
+     Chip-style blips made from oscillators and a noise burst, each under
+     100ms, so a sound is over before the next bounce. There are no files:
+     everything is synthesised in the browser the moment it is needed, which
+     also means it travels inside the one HTML file like everything else.
+
+     Every tone gets a random +/-4% on its pitch. The same sound a hundred
+     times a minute at exactly the same pitch is the fastest way to make a
+     player mute a game; a little drift keeps it alive.
+
+     The browser will not start audio without a user gesture, so the context
+     is created and resumed from the first pointerdown or keydown, which the
+     tap to start always provides. */
+  var SFX = (function () {
+    var ac = null, master = null, noiseBuf = null;
+
+    function ctx() {
+      if (ac) return ac;
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ac = new AC();
+      master = ac.createGain();
+      master.connect(ac.destination);
+      return ac;
+    }
+
+    function unlock() {
+      var a = ctx();
+      if (a && a.state === 'suspended') { try { a.resume(); } catch (e) { /* ignore */ } }
+    }
+
+    function on() {
+      if (!T.sound) return null;
+      var a = ctx();
+      if (!a || a.state !== 'running') return null;
+      master.gain.value = T.volume / 100;
+      return a;
+    }
+
+    function jitter(f) { return f * (0.96 + Math.random() * 0.08); }
+
+    // One oscillator with a fast attack and an exponential fall, optionally
+    // sliding to a second pitch. type is 'square' or 'triangle'.
+    function tone(freq, ms, type, vol, slideTo, delayMs) {
+      var a = on(); if (!a) return;
+      var t0 = a.currentTime + (delayMs || 0) / 1000, t1 = t0 + ms / 1000;
+      var o = a.createOscillator(), g = a.createGain();
+      o.type = type || 'square';
+      o.frequency.setValueAtTime(jitter(freq), t0);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(jitter(slideTo), t1);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol, t0 + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t1);
+      o.connect(g); g.connect(master);
+      o.start(t0); o.stop(t1 + 0.01);
+    }
+
+    // A burst of filtered noise: the crunch under a break.
+    function noise(ms, vol, cutoff) {
+      var a = on(); if (!a) return;
+      if (!noiseBuf) {
+        noiseBuf = a.createBuffer(1, a.sampleRate * 0.12, a.sampleRate);
+        var d = noiseBuf.getChannelData(0);
+        for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+      var t0 = a.currentTime, t1 = t0 + ms / 1000;
+      var src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+      src.buffer = noiseBuf;
+      f.type = 'lowpass'; f.frequency.value = cutoff;
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t1);
+      src.connect(f); f.connect(g); g.connect(master);
+      src.start(t0); src.stop(t1 + 0.01);
+    }
+
+    // Every material has its own voice: a pitch, a wave, a pitch slide and
+    // how much crunch sits under it. Ice rings and rises, wood knocks, snow
+    // is nearly all noise, gold adds a ding. The three that never break
+    // answer with a dead sound of their own, so the ear learns them too.
+    var VOICE = {};
+    VOICE[ICE]     = { f: 520,  w: 'square',   sl: 1.6,  ms: 60, nz: 0.18, cut: 1400 };
+    VOICE[CRACKED] = { f: 720,  w: 'square',   sl: 1.3,  ms: 45, nz: 0.14, cut: 2200 };
+    VOICE[BLUEICE] = { f: 640,  w: 'square',   sl: 1.8,  ms: 80, nz: 0.20, cut: 1800 };
+    VOICE[SNOWCAP] = { f: 480,  w: 'square',   sl: 1.5,  ms: 60, nz: 0.22, cut: 900 };
+    VOICE[HOLLOW]  = { f: 400,  w: 'triangle', sl: 0.6,  ms: 90, nz: 0.12, cut: 700 };
+    VOICE[PACKED]  = { f: 180,  w: 'triangle', sl: 0.8,  ms: 50, nz: 0.26, cut: 500 };
+    VOICE[WOOD]    = { f: 240,  w: 'square',   sl: 0.9,  ms: 55, nz: 0.20, cut: 800 };
+    VOICE[CRATE]   = { f: 200,  w: 'square',   sl: 0.85, ms: 60, nz: 0.22, cut: 700 };
+    VOICE[GOLDORE] = { f: 880,  w: 'triangle', sl: 1.5,  ms: 90, nz: 0.08, cut: 3000, ding: true };
+    VOICE[COAL]    = { f: 140,  w: 'triangle', sl: 0.7,  ms: 55, nz: 0.28, cut: 400 };
+    VOICE[SANDSTONE] = { f: 260, w: 'triangle', sl: 0.8, ms: 55, nz: 0.30, cut: 600 };
+    VOICE[BRICK]   = { f: 300,  w: 'square',   sl: 0.85, ms: 60, nz: 0.20, cut: 900 };
+    VOICE[CORAL]   = { f: 700,  w: 'triangle', sl: 1.4,  ms: 60, nz: 0.18, cut: 2500 };
+    VOICE[SEAGLASS] = { f: 820, w: 'square',   sl: 1.7,  ms: 80, nz: 0.12, cut: 3000 };
+    VOICE[CIRCUIT] = { f: 1000, w: 'square',   sl: 1.9,  ms: 60, nz: 0.10, cut: 4000, ding: true };
+    VOICE[NEON]    = { f: 1200, w: 'square',   sl: 0.5,  ms: 70, nz: 0.08, cut: 5000 };
+    VOICE[MOONROCK] = { f: 200, w: 'triangle', sl: 0.8,  ms: 55, nz: 0.28, cut: 500 };
+    VOICE[SOLAR]   = { f: 900,  w: 'square',   sl: 1.6,  ms: 50, nz: 0.14, cut: 3500 };
+    VOICE[SLAG]    = { f: 160,  w: 'triangle', sl: 0.7,  ms: 60, nz: 0.30, cut: 450 };
+    VOICE[MOSSLOG] = { f: 230,  w: 'square',   sl: 0.9,  ms: 55, nz: 0.22, cut: 750 };
+    var DEADV = {};
+    DEADV[ROCK]     = { f: 110,  w: 'square', sl: 0.8, ms: 55, nz: 0.10, cut: 400 };   // thunk
+    DEADV[IRON]     = { f: 1100, w: 'square', sl: 0.5, ms: 90, nz: 0.06, cut: 5000 };  // clang
+    DEADV[OBSIDIAN] = { f: 1600, w: 'square', sl: 0.9, ms: 35, nz: 0.05, cut: 6000 };  // glassy tick
+
+    return {
+      unlock: unlock,
+      ctx: ctx,
+      land:  function () { tone(150, 45, 'triangle', 0.18); },
+      chip:  function (mat) { tone((VOICE[mat] || VOICE[ICE]).f * 0.6, 40, 'square', 0.14); },
+      // A break rises with the multiplier, so a good combo climbs in pitch,
+      // in the voice of whatever material just went.
+      brk:   function (mult, mat) {
+        var v = VOICE[mat] || VOICE[ICE];
+        var f = v.f * Math.pow(2, (mult - 1) / 12);
+        noise(v.ms, v.nz, v.cut);
+        tone(f, v.ms, v.w, 0.2, f * v.sl);
+        if (v.ding) tone(f * 1.5, 70, 'triangle', 0.14, 0, 40);
+      },
+      dead:  function (mat) {
+        var d = DEADV[mat] || DEADV[ROCK];
+        noise(d.ms, d.nz, d.cut);
+        tone(d.f, d.ms, d.w, 0.2, d.f * d.sl);
+      },
+      veg:   function () { tone(660, 45, 'square', 0.16); tone(880, 45, 'square', 0.16, 0, 45); },
+      kit:   function () { tone(523, 45, 'square', 0.18); tone(784, 50, 'square', 0.18, 0, 45); },
+      combo: function (mult) { tone(400 + mult * 60, 80, 'square', 0.2, 900 + mult * 80); },
+      knock: function () { tone(300, 90, 'square', 0.22, 110); },
+      die:   function () { noise(90, 0.3, 500); tone(220, 95, 'triangle', 0.25, 60); },
+      zone:  function () { tone(587, 50, 'triangle', 0.16); tone(880, 50, 'triangle', 0.16, 0, 50); }
+    };
+  })();
+
+  // The loop shares the effects' audio context, so one tap unlocks both.
+  SFX.music = Music.create(function () {
+    return { ctx: SFX.ctx(), on: T.music, vol: T.musicVol, style: T.musicStyle };
+  });
+
+  window.addEventListener('pointerdown', SFX.unlock);
+  window.addEventListener('keydown', SFX.unlock);
   var BEST_KEY = 'dc.kit.icy-hopper';
 
   // The bounce must clear one floor (rise > ROW_GAP) but never reach the
@@ -109,13 +290,18 @@
   // ROW_GAP 120, BH 24, PH 45 leaves rise between 120 and 171; it is 150.
   var T = Debug.panel('icy-hopper', [
     { group: 'CHARACTER', key: 'chr', type: 'choice', value: 0,
-      options: ['PENGUIN', 'YETI CUB', 'SNOW ROBOT', 'MOUNTAIN GOAT', 'ASTRONAUT'],
+      options: ['RANDOM', 'PENGUIN', 'SNOW ROBOT', 'POLAR CUB', 'ICE CUBE', 'SNOWMAN', 'COCOA MUG', 'TRAFFIC CONE', 'CACTUS', 'ICE CREAM'],
       notes: [
-        'Belongs on ice with no explanation, and black against a white belly is the strongest silhouette of the five. The scarf arrives with the boots and the feet turn gold.',
-        'A small shaggy snow creature, blue-grey on purpose so it never disappears into the snow. The widest body, so the gear has the most room to sit on it.',
-        'The only one where an upgrade chain is literally what it is for. The glowing visor is a single bright point that stays visible while it moves.',
-        'Four legs, so instantly unlike everything else, and climbing is what a goat does. The horns give it a shape nothing else here has.',
-        'A round helmet is the most readable head shape there is, and the visor carries expression by reflection alone.'
+        'A different climber every run, from all nine. The default.',
+        'Round this time: a proper egg of a body, white face patches, the beak in two tones, a grey glint on the crown.',
+        'Bevelled boxes, a glowing visor with a glint, a chest panel with its own light.',
+        'Round in every direction, grey inner ears and belly, a black nose on a small muzzle.',
+        'A block of ice with a face - the world climbing itself. The side view shows a darker face for depth.',
+        'Three balls, top hat with a red band, coal buttons, a carrot, twig arms.',
+        'Hot cocoa with two marshmallows and steam. The handle faces the way it goes.',
+        'The only thing on the mountain that is not supposed to be there. Two white bands.',
+        'A cactus in a pot with a flower on top, ribs, spines - the most out-of-place climber possible.',
+        'Strawberry over vanilla on a cross-hatched waffle cone, cherry on top.'
       ] },
 
     // SMASH + CLIMB is the default: you break the ice and carry straight on up
@@ -198,6 +384,17 @@
     // Hitstop is the single biggest part of how a break feels. 0 turns it off.
     // With SMASH + CLIMB you break a block roughly once a second, so anything
     // much above 80 starts to read as the game stuttering rather than hitting.
+    { group: 'SOUND', key: 'sound', type: 'toggle', label: 'SOUND', value: true,
+      note: 'all of it. Every sound is a short synthesised blip, none longer than a tenth of a second, made in the browser - there are no audio files.' },
+    { group: 'SOUND', key: 'volume', type: 'range', label: 'VOLUME', min: 0, max: 100, step: 5, value: 60,
+      note: 'Master level. The phone\'s own volume applies on top.' },
+    { group: 'SOUND', key: 'music', type: 'toggle', label: 'MUSIC', value: true,
+      note: 'a four-bar chip loop under the run, synthesised like the effects. Silent on the ready screen, stops when you die, and shifts key with each zone.' },
+    { group: 'SOUND', key: 'musicVol', type: 'range', label: 'MUSIC VOLUME', min: 0, max: 100, step: 5, value: 45,
+      note: 'Music only. The effects have their own dial above.' },
+    { group: 'SOUND', key: 'musicStyle', type: 'choice', value: 0,
+      options: ['ARCADE RUSH', 'BOUNCE', 'SUNNY MAJOR', 'ICE CAVE', 'BREAKBEAT', '8-BIT DISCO', 'PRESSURE', 'MINIMAL PULSE'],
+      notes: Music.styles.map(function (m) { return m.bpm + ' BPM. ' + m.desc; }) },
     { group: 'IMPACT', key: 'haptics', type: 'toggle', label: 'HAPTICS', value: true , note: 'vibration entirely.' },
     { group: 'IMPACT', key: 'hapticMs', type: 'range', label: 'HAPTIC MS', min: 1, max: 40, step: 1, value: 1 , note: 'Length of the shortest pulse. Everything else is a multiple of it. 1 is the floor the phone allows.' },
     { group: 'IMPACT', key: 'buzzOn', type: 'choice', value: 0,
@@ -209,6 +406,8 @@
       ] },
     { group: 'IMPACT', key: 'hitstop', type: 'range', label: 'HITSTOP (MS)', min: 0, max: 140, step: 5, value: 70 , note: 'How long the game freezes on a hit. This is what gives a break its weight.' },
     { group: 'IMPACT', key: 'shakeHit', type: 'range', label: 'SHAKE ON BREAK', min: 0, max: 8, step: 0.25, value: 1.25, dec: 2 , note: 'Screen shake when a block breaks. Every other block shake scales from this.' },
+    { group: 'IMPACT', key: 'squash', type: 'range', label: 'SQUASH', min: 0, max: 40, step: 2, value: 20,
+      note: 'How much the climber flattens on landing and stretches while rising, in percent. 0 keeps the sprite rigid.' },
     { group: 'IMPACT', key: 'sparks', type: 'range', label: 'SPARKLES', min: 0, max: 24, step: 2, value: 12 , note: 'Sparkles thrown out by a break. Looks only.' },
 
     // A combo point per hit the block cost you, doubled again for every extra
@@ -228,8 +427,8 @@
     // climb is one floor per bounce, which is 204 px per game second, so the
     // snow becomes faster than anyone can climb at t = (204 - base) / ramp. At
     // 45 and 2.1 that is 76 seconds, where it used to be 46.
-    { group: 'PRESSURE', key: 'snowBase', type: 'range', label: 'SNOW START', min: 0, max: 270, step: 3, value: 45 , note: 'Starting speed of the avalanche.' },
-    { group: 'PRESSURE', key: 'snowRamp', type: 'range', label: 'SNOW RAMP', min: 0, max: 9, step: 0.15, value: 2.1, dec: 1 , note: 'How much faster the avalanche gets each second.' },
+    { group: 'PRESSURE', key: 'snowBase', type: 'range', label: 'SNOW START', min: 0, max: 270, step: 3, value: 39 , note: 'Starting speed of the avalanche.' },
+    { group: 'PRESSURE', key: 'snowRamp', type: 'range', label: 'SNOW RAMP', min: 0, max: 9, step: 0.15, value: 1.8, dec: 1 , note: 'How much faster the avalanche gets each second.' },
     // MAX LEAD is how far the snow is allowed to fall behind. At 1380 it could
     // never drop more than 11.5 floors back, so climbing well earned no safety
     // and the snow was always just under you. 3000 is 25 floors, far enough
@@ -256,6 +455,8 @@
     { group: 'BACKGROUND', key: 'detail', type: 'toggle', label: 'ZONE DETAIL', value: true , note: 'the moving layer in front of the background - snow, embers, fish.' },
     // Off falls back to the drawn backdrops even where a PNG exists.
     { group: 'BACKGROUND', key: 'painted', type: 'toggle', label: 'PAINTED BG', value: true , note: 'painted PNG backgrounds. Off goes back to the drawn ones.' },
+    { group: 'SHOW', key: 'anim', type: 'toggle', label: 'ANIMATION', value: true,
+      note: 'the small motions: a chipped block jolts and leans, veggies bob, seals walk, gold glints.' },
     { group: 'SHOW', key: 'joystick', type: 'toggle', label: 'JOYSTICK', value: true,
       note: 'a faint pixel joystick under your thumb while you drag, so one-finger steering is visible. Never shown for TAP A SIDE.' },
     { group: 'SHOW', key: 'hires', type: 'toggle', label: 'RENDER 2X', value: true,
@@ -791,43 +992,43 @@
   // Twelve zones, four looks each, and a detail layer that carries the subject.
   // The first look is the default; BACKDROP in the drawer switches all of them.
   var PLACE = [
-    { name: 'ICE FIELD', rock: 0.03, det: detIce, mats: [PACKED, BLUEICE, BLUEICE, HOLLOW, CRACKED],
+    { name: 'ICE FIELD', rock: 0.03, det: detIce, mats: [PACKED, BLUEICE, SNOWCAP, HOLLOW, CRACKED],
       looks: [ { n: 'RIDGES', f: compRidges, o: { sx: 130, sy: 150, sr: 62, motes: 6, top: 560 } },
                { n: 'MOON', f: compOrb, o: { sx: 300, sy: 300, sr: 110, motes: 7 } },
                { n: 'SNOWFALL', f: compDrift, o: { sx: 120, sy: 140, sr: 46, far: 30, mid: 16, near: 9 } },
                { n: 'SHELVES', f: compStrata, o: { sx: 400, sy: 170, sr: 50, motes: 6 } } ] },
 
-    { name: 'DEEP WOOD', rock: 0.06, det: detWood, mats: [WOOD, WOOD, CRATE, CRACKED, PACKED],
+    { name: 'DEEP WOOD', rock: 0.06, det: detWood, mats: [WOOD, MOSSLOG, CRATE, CRACKED, MOSSLOG],
       looks: [ { n: 'CANOPY', f: compCanopy, o: { sx: 400, sy: 170, sr: 50, r1: 40, r2: 52, motes: 6 } },
                { n: 'HILLS', f: compRidges, o: { sx: 400, sy: 160, sr: 52, motes: 6, top: 540 } },
                { n: 'LIGHT THROUGH', f: compShafts, o: { n: 7, w: 34, lean: 0.3, motes: 8 } },
                { n: 'FIREFLIES', f: compDrift, o: { sx: 380, sy: 180, sr: 44, far: 20, mid: 12, near: 10 } } ] },
 
-    { name: 'THE KEEP', rock: 0.16, det: detMedieval, mats: [ROCK, WOOD, CRATE, COAL, ROCK],
+    { name: 'THE KEEP', rock: 0.16, det: detMedieval, mats: [BRICK, BRICK, WOOD, CRATE, ROCK],
       looks: [ { n: 'TOWERS', f: compMass, o: { sx: 400, sy: 160, sr: 46, motes: 6 } },
                { n: 'HILLFORT', f: compRidges, o: { sx: 400, sy: 150, sr: 48, motes: 6, top: 560 } },
                { n: 'MOONRISE', f: compOrb, o: { sx: 300, sy: 300, sr: 104, motes: 8 } },
                { n: 'RAMPARTS', f: compStrata, o: { sx: 130, sy: 160, sr: 46, motes: 7 } } ] },
 
-    { name: 'THE DUNES', rock: 0.22, det: detDunes, mats: [ROCK, GOLDORE, SNOWCAP, COAL, ROCK],
+    { name: 'THE DUNES', rock: 0.22, det: detDunes, mats: [SANDSTONE, SANDSTONE, GOLDORE, ROCK, COAL],
       looks: [ { n: 'DUNES', f: compRidges, o: { sx: 360, sy: 210, sr: 66, top: 480 } },
                { n: 'LOW SUN', f: compOrb, o: { sx: 300, sy: 380, sr: 130 } },
                { n: 'MESAS', f: compStrata, o: { sx: 140, sy: 170, sr: 54 } },
                { n: 'HEAT HAZE', f: compDrift, o: { sx: 340, sy: 200, sr: 70, far: 16, mid: 10, near: 6 } } ] },
 
-    { name: 'THE FORGE', rock: 0.20, det: detForge, mats: [OBSIDIAN, COAL, COAL, ROCK, GOLDORE],
+    { name: 'THE FORGE', rock: 0.20, det: detForge, mats: [SLAG, OBSIDIAN, COAL, SLAG, GOLDORE],
       looks: [ { n: 'EMBERS', f: compRidges, o: { sx: 300, sy: 250, sr: 82, motes: 14, top: 540 } },
                { n: 'THE MOUTH', f: compOrb, o: { sx: 270, sy: 420, sr: 160, motes: 14 } },
                { n: 'CINDERS', f: compDrift, o: { sx: 300, sy: 200, sr: 66, far: 22, mid: 16, near: 12 } },
                { n: 'FLOWS', f: compMass, o: { sx: 150, sy: 190, sr: 58, motes: 12 } } ] },
 
-    { name: 'THE SHALLOWS', rock: 0.04, det: detShallows, mats: [BLUEICE, HOLLOW, CRATE, CRACKED, PACKED],
+    { name: 'THE SHALLOWS', rock: 0.04, det: detShallows, mats: [CORAL, BLUEICE, HOLLOW, CORAL, CRACKED],
       looks: [ { n: 'SHAFTS', f: compShafts, o: { n: 6, w: 44, lean: 0.42, motes: 9 } },
                { n: 'BUBBLES', f: compDrift, o: { far: 26, mid: 16, near: 10 } },
                { n: 'SANDBARS', f: compStrata, o: { motes: 8 } },
                { n: 'SWELL', f: compArc, o: { motes: 9 } } ] },
 
-    { name: 'THE ABYSS', rock: 0.05, det: detAbyss, mats: [OBSIDIAN, HOLLOW, GOLDORE, BLUEICE, POWDER],
+    { name: 'THE ABYSS', rock: 0.05, det: detAbyss, mats: [SEAGLASS, OBSIDIAN, HOLLOW, SEAGLASS, GOLDORE],
       looks: [ { n: 'MARINE SNOW', f: compDrift, o: { far: 30, mid: 12, near: 7 } },
                { n: 'ONE LIGHT', f: compOrb, o: { sx: 300, sy: 300, sr: 74, motes: 10 } },
                { n: 'FAR SURFACE', f: compShafts, o: { n: 4, w: 30, lean: 0.24, motes: 10 } },
@@ -839,25 +1040,25 @@
                { n: 'SMOKE', f: compDrift, o: { sx: 150, sy: 190, sr: 52, far: 24, mid: 14, near: 8 } },
                { n: 'GANTRY', f: compStrata, o: { sx: 400, sy: 160, sr: 46, motes: 10 } } ] },
 
-    { name: 'THE BOARD', rock: 0.05, det: detTech, mats: [IRON, GOLDORE, OBSIDIAN, SNOWCAP, HOLLOW],
+    { name: 'THE BOARD', rock: 0.05, det: detTech, mats: [CIRCUIT, IRON, CIRCUIT, GOLDORE, HOLLOW],
       looks: [ { n: 'TRACES', f: compDrift, o: { far: 22, mid: 14, near: 9 } },
                { n: 'THE CORE', f: compOrb, o: { sx: 300, sy: 320, sr: 96, ring: true, motes: 10 } },
                { n: 'BUS LANES', f: compShafts, o: { n: 8, w: 26, lean: 0.16, motes: 10 } },
                { n: 'LAYERS', f: compStrata, o: { sx: 420, sy: 160, sr: 44, motes: 10 } } ] },
 
-    { name: 'NEON CITY', rock: 0.06, det: detFuture, mats: [IRON, OBSIDIAN, GOLDORE, HOLLOW, CRATE],
+    { name: 'NEON CITY', rock: 0.06, det: detFuture, mats: [NEON, IRON, NEON, GOLDORE, OBSIDIAN],
       looks: [ { n: 'SKYLINE', f: compMass, o: { sx: 400, sy: 150, sr: 44, motes: 12 } },
                { n: 'RAIN', f: compDrift, o: { sx: 380, sy: 160, sr: 40, far: 28, mid: 16, near: 10 } },
                { n: 'SEARCHLIGHT', f: compShafts, o: { n: 5, w: 40, lean: 0.5, motes: 12 } },
                { n: 'THE ARCH', f: compArc, o: { sx: 120, sy: 170, sr: 46, motes: 12 } } ] },
 
-    { name: 'THE MOON', rock: 0.14, det: detMoon, mats: [POWDER, ROCK, OBSIDIAN, GOLDORE, ROCK],
+    { name: 'THE MOON', rock: 0.14, det: detMoon, mats: [MOONROCK, POWDER, MOONROCK, ROCK, GOLDORE],
       looks: [ { n: 'CRATERS', f: compRidges, o: { motes: 5, top: 580 } },
                { n: 'EARTHRISE', f: compOrb, o: { sx: 300, sy: 280, sr: 118, motes: 7 } },
                { n: 'DUST', f: compDrift, o: { far: 26, mid: 12, near: 6 } },
                { n: 'THE RILLE', f: compMass, o: { motes: 6 } } ] },
 
-    { name: 'ORBIT', rock: 0.04, det: detOrbit, mats: [OBSIDIAN, GOLDORE, POWDER, HOLLOW, SNOWCAP],
+    { name: 'ORBIT', rock: 0.04, det: detOrbit, mats: [SOLAR, OBSIDIAN, SOLAR, POWDER, HOLLOW],
       looks: [ { n: 'STARFIELD', f: compDrift, o: { far: 34, mid: 14, near: 8 } },
                { n: 'THE PLANET', f: compOrb, o: { sx: 300, sy: 340, sr: 150, ring: true, motes: 10 } },
                { n: 'THE RING', f: compArc, o: { sx: 120, sy: 160, sr: 44, motes: 10 } },
@@ -1060,7 +1261,7 @@
     else S.lastGap = gappedRow(z, b, S.lastGap);
 
     paintRow(b, z, S.lastGap);
-    var row = { n: n, kind: kind, z: z, b: b, d: new Array(COLS), veg: -1, topi: null };
+    var row = { n: n, kind: kind, z: z, b: b, d: new Array(COLS), ht: new Array(COLS), veg: -1, topi: null };
 
     if (T.kit && n > 1 && kind !== 'zoneline' && Math.random() * 100 < T.vegRate) {
       row.veg = placeVeg(b, S.lastGap);
@@ -1144,6 +1345,56 @@
     }
   }
 
+  // Lightning for a new multiplier: two bolts from the top of the screen
+  // down to the card, drawn as runs of grid cells with a wider faint glow, and
+  // a two-frame flash of the whole screen behind them. They flicker on and
+  // off for a third of a second and are gone. It is the loudest thing the
+  // screen does, which is right: the multiplier is the loudest thing that
+  // happens to the score.
+  function strike() {
+    if (!T.anim) return;
+    S.bolts = [];
+    for (var b = 0; b < 2; b++) {
+      var side = b ? 1 : -1;
+      var x0 = W / 2 + side * (40 + Math.random() * 90), y0 = -2 * U;
+      var x1 = W / 2 + side * (Math.random() * 24), y1 = NOTE_Y + 8 * U;
+      var pts = [], steps = 7;
+      for (var i = 0; i <= steps; i++) {
+        var k = i / steps, jog = (i > 0 && i < steps) ? (Math.random() * 2 - 1) * 16 * U : 0;
+        pts.push({ x: Math.round((x0 + (x1 - x0) * k + jog) / U) * U,
+                   y: Math.round((y0 + (y1 - y0) * k) / U) * U });
+      }
+      S.bolts.push({ pts: pts, t: 0 });
+    }
+    S.strikeFlash = 0.1;
+  }
+
+  function drawBolts(g, ctx, P) {
+    if (S.strikeFlash > 0) {
+      ctx.globalAlpha = Math.min(0.35, S.strikeFlash * 4);
+      g.rect(0, 0, W, H, P.snow);
+      ctx.globalAlpha = 1;
+    }
+    for (var b = 0; b < S.bolts.length; b++) {
+      var bolt = S.bolts[b];
+      if (bolt.t > 0.08 && Math.floor(bolt.t * 30) % 2) continue;      // flicker
+      var pts = bolt.pts;
+      for (var pass = 0; pass < 2; pass++) {
+        var size = pass ? 2 * U : 4 * U;
+        ctx.globalAlpha = pass ? 0.95 : 0.3;
+        for (var i = 1; i < pts.length; i++) {
+          var ax = pts[i - 1].x, ay = pts[i - 1].y, bx = pts[i].x, by = pts[i].y;
+          var n = Math.max(Math.abs(bx - ax), Math.abs(by - ay)) / U;
+          for (var k = 0; k <= n; k++) {
+            var x = Math.round((ax + (bx - ax) * k / n) / U) * U, y = Math.round((ay + (by - ay) * k / n) / U) * U;
+            g.rect(x - size / 2, y - size / 2, size, size, P.snow);
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
   function drawJoystick(g, ctx, P) {
     var j = S.joy;
     if (!j || j.a <= 0) return;
@@ -1190,9 +1441,20 @@
     note({ kind: 'msg', text: title, bad: !!bad, t: (secs || 1) * 0.7 });
   }
 
+  // Small floating "+N" texts where points were earned. They rise a cell every
+  // few frames and fade, so a pickup or a paid-out block says what it was worth
+  // right where it happened rather than only in the score row.
+  function floatText(x, y, text, col) {
+    if (!T.anim) return;
+    if (S.floats.length >= 6) S.floats.shift();
+    S.floats.push({ x: x, y: y, text: text, col: col, t: 0 });
+  }
+
   function gainVeg(g, x, y) {
     S.veg++;
     S.bonus += 5;
+    floatText(x, y - 18, '+5', 'purpleLite');
+    SFX.veg();
     puff(x, y, 'purple', 5);
     if (!T.kit || S.veg < T.kitCost) return;
     S.veg = 0;
@@ -1204,6 +1466,7 @@
       // Every piece is already on. Veggies still pay, just in points.
       S.bonus += 30;
       banner('KIT FULL +30', '', false, 1.0);
+      SFX.kit();
       g.shake = 3;
       return;
     }
@@ -1219,6 +1482,7 @@
       banner('GOT ' + KIT[S.kit - 1].name, '', false, 1.1);
       noteBestKit(S.kit);
       S.bonus += 20;
+      SFX.kit();
     }
     g.shake = 4;
   }
@@ -1300,6 +1564,7 @@
   function knock(g, dir) {
     if (S.hurt > 0 || S.fly > 0) return;
     S.hurt = 0.75;
+    SFX.knock();
     S.p.vy = 750;
     S.p.x += dir * 15;
     S.streak = 0;
@@ -1319,18 +1584,45 @@
   // of the hit; the sparkles are the reward for it.
   // part is a MULTIPLIER, not a flag: 1 is the block coming apart, 0.4 is a chip
   // off a block that held. Only a real break earns the sparkles and the hitstop.
+  // How the CHUNKS of each material move. This is what makes two breaks look
+  // different from across the room, more than the colour of the pieces:
+  // stone drops, snow floats, glass explodes, sand pours, embers rise.
+  //   chunks  how many, against the material's own count
+  //   up      upward speed        spread  sideways speed
+  //   weight  gravity             life    seconds on screen
+  //   sparkle how many of the reward sparkles, against the dial
+  //   radial  true when pieces fly in every direction, down included
+  var FXP = {
+    ice:    { chunks: 1.0, up: 1.0,  spread: 1.0, weight: 1.3, life: 0.8, sparkle: 1.0 },
+    snow:   { chunks: 1.3, up: 0.25, spread: 0.5, weight: 0.2, life: 1.1, sparkle: 0.3 },
+    wood:   { chunks: 0.6, up: 1.1,  spread: 0.9, weight: 1.2, life: 0.9, sparkle: 0.4 },
+    leaves: { chunks: 0.5, up: 0.9,  spread: 0.8, weight: 1.1, life: 0.9, sparkle: 0.3 },
+    stone:  { chunks: 1.0, up: 0.3,  spread: 0.55, weight: 1.9, life: 0.7, sparkle: 0.2 },
+    gold:   { chunks: 0.8, up: 0.9,  spread: 0.8, weight: 1.5, life: 0.8, sparkle: 1.6 },
+    sand:   { chunks: 0.3, up: 0.1,  spread: 0.4, weight: 1.6, life: 0.7, sparkle: 0.0 },
+    coral:  { chunks: 0.5, up: 0.6,  spread: 0.7, weight: 0.5, life: 1.1, sparkle: 0.5 },
+    glass:  { chunks: 0.5, up: 1.4,  spread: 1.6, weight: 0.9, life: 0.5, sparkle: 1.2, radial: true },
+    panel:  { chunks: 0.6, up: 0.25, spread: 0.45, weight: 1.2, life: 0.8, sparkle: 0.6 },
+    sparks: { chunks: 0.4, up: 0.8,  spread: 1.2, weight: 1.0, life: 0.5, sparkle: 0.5, radial: true },
+    neon:   { chunks: 0.3, up: 0.4,  spread: 0.8, weight: 0.4, life: 0.6, sparkle: 0.8 },
+    embers: { chunks: 0.7, up: 0.3,  spread: 0.6, weight: 1.7, life: 0.7, sparkle: 0.3 }
+  };
+
   function shatter(r, c, m, part) {
     var full = (part === undefined) || part >= 1;
-    var n = Math.max(2, Math.round(m.n * 0.7 * (part || 1)));
+    var pf = FXP[m.fx] || FXP.ice;
+    var n = Math.max(2, Math.round(m.n * 0.7 * (part || 1) * (full ? pf.chunks : 1)));
     var cx = c * BW + BW / 2, cy = rowY(r.n) + BH / 2;
     var i, ang, sp;
     for (i = 0; i < n; i++) {
+      var vy = -Math.random() * 210 * (part ? 0.6 : 1) * (full ? pf.up : 1);
+      if (full && pf.radial) vy = (Math.random() * 2 - 1) * 210 * pf.up;
       S.parts.push({
         x: cx + (Math.random() * BW - BW / 2) * 0.7,
         y: cy + (Math.random() * BH - BH / 2) * 0.7,
-        vx: (Math.random() * 2 - 1) * 190 * (part ? 0.6 : 1),
-        vy: -Math.random() * 210 * (part ? 0.6 : 1),
-        life: full ? 0.8 : 0.5, tone: m.tone, weight: m.weight * 1.35,
+        vx: (Math.random() * 2 - 1) * 190 * (part ? 0.6 : 1) * (full ? pf.spread : 1),
+        vy: vy,
+        life: full ? pf.life : 0.5, tone: m.tone, weight: m.weight * (full ? pf.weight : 1.35),
         size: Math.max(2, Math.round((full ? 3.4 : 1.5) * m.weight + 1))
       });
     }
@@ -1339,10 +1631,12 @@
     for (i = 0; i < 6; i++) {               // dust, hanging low and fading fast
       S.parts.push({
         x: cx + (Math.random() * BW - BW / 2), y: cy + BH * 0.3,
-        vx: (Math.random() * 2 - 1) * 90, vy: -Math.random() * 40,
+        vx: (Math.random() * 2 - 1) * 90 * pf.spread, vy: -Math.random() * 40 * Math.max(0.3, pf.up),
         life: 0.42, tone: m.tone, weight: 0.1, size: 2, soft: true
       });
     }
+    breakEffect(m.fx, cx, cy);
+
     // Every bounce breaks something, so a full freeze on every break is stutter,
     // not punch. The freeze is scaled to what the block cost you: plain ice gets
     // half, a two-hit block gets all of it, obsidian giving way after three gets
@@ -1352,7 +1646,7 @@
             : m.hits >= 2 ? 1
             : 0.5;
 
-    for (i = 0; i < Math.round(T.sparks * big); i++) {   // sparkles, drifting up
+    for (i = 0; i < Math.round(T.sparks * big * pf.sparkle); i++) {   // sparkles, by material
       ang = -Math.PI * (0.15 + Math.random() * 0.7);
       sp = 90 + Math.random() * 130;
       S.parts.push({
@@ -1363,6 +1657,114 @@
     }
     S.flashes.push({ x: c * BW, y: rowY(r.n), t: 0 });
     if (T.hitstop > 0) S.freeze = Math.max(S.freeze, T.hitstop * big / 1000);
+  }
+
+  // The part of a break that says what the material WAS. Each kind of particle
+  // has its own physics in stepParts and its own look in drawParts.
+  function breakEffect(fx, cx, cy) {
+    var i, a;
+    function many(count, make) { for (i = 0; i < count; i++) S.parts.push(make(i)); }
+    switch (fx) {
+      case 'ice':                                     // slivers, spinning as they fall
+        many(6, function () { return { kind: 'shard', x: cx + (Math.random() - 0.5) * 40, y: cy, vx: (Math.random() - 0.5) * 260, vy: -80 - Math.random() * 180, life: 0.7, weight: 1.1, tone: 'blueIceTop' }; });
+        break;
+      case 'snow':                                    // a bigger, slower cloud
+        many(10, function () { return { x: cx + (Math.random() - 0.5) * BW, y: cy, vx: (Math.random() - 0.5) * 120, vy: -Math.random() * 90, life: 0.7, tone: 'snow', weight: 0.25, size: 2, soft: true }; });
+        break;
+      case 'wood':                                    // long splinters, end over end
+        many(5, function () { return { kind: 'shard', x: cx + (Math.random() - 0.5) * 30, y: cy, vx: (Math.random() - 0.5) * 220, vy: -120 - Math.random() * 160, life: 0.8, weight: 1.2, tone: 'woodTop', long: true }; });
+        break;
+      case 'leaves':                                  // splinters, and leaves that flutter
+        many(4, function () { return { kind: 'shard', x: cx + (Math.random() - 0.5) * 30, y: cy, vx: (Math.random() - 0.5) * 200, vy: -100 - Math.random() * 140, life: 0.8, weight: 1.2, tone: 'woodTop', long: true }; });
+        many(7, function (k) { return { kind: 'leaf', x: cx + (Math.random() - 0.5) * 50, y: cy - 8, vx: (Math.random() - 0.5) * 80, vy: -60 - Math.random() * 90, life: 1.3, weight: 0.12, tone: k % 2 ? 'mossLite' : 'green', ph: Math.random() * 6 }; });
+        break;
+      case 'stone':                                   // a low grey cloud that hangs
+        many(4, function () { return { kind: 'smoke', x: cx + (Math.random() - 0.5) * 40, y: cy + 4, vx: (Math.random() - 0.5) * 50, vy: -20 - Math.random() * 30, life: 0.9, weight: -0.04, tone: 'coalTop' }; });
+        break;
+      case 'gold':                                    // more sparkle than anything, plus dust
+        many(3, function () { return { kind: 'smoke', x: cx + (Math.random() - 0.5) * 40, y: cy + 4, vx: (Math.random() - 0.5) * 50, vy: -20 - Math.random() * 30, life: 0.8, weight: -0.04, tone: 'coalTop' }; });
+        many(6, function () { return { kind: 'fire', x: cx + (Math.random() - 0.5) * 30, y: cy, vx: (Math.random() - 0.5) * 240, vy: -60 - Math.random() * 200, life: 0.5, weight: 0.3, tone: 'goldLight' }; });
+        break;
+      case 'sand':                                    // it just pours
+        many(28, function () { return { kind: 'sand', x: cx + (Math.random() - 0.5) * BW, y: cy + (Math.random() - 0.5) * BH, vx: (Math.random() - 0.5) * 110, vy: -Math.random() * 60, life: 0.8, weight: 1.6, tone: Math.random() < 0.5 ? 'sand' : 'sandTop' }; });
+        break;
+      case 'coral':                                   // flakes, and bubbles rising off it
+        many(5, function () { return { kind: 'leaf', x: cx + (Math.random() - 0.5) * 40, y: cy, vx: (Math.random() - 0.5) * 90, vy: -40 - Math.random() * 80, life: 1.0, weight: 0.3, tone: 'coralLite', ph: Math.random() * 6 }; });
+        many(6, function () { return { kind: 'bubble', x: cx + (Math.random() - 0.5) * 40, y: cy, vx: (Math.random() - 0.5) * 20, vy: -50 - Math.random() * 40, life: 1.2, weight: -0.12, ph: Math.random() * 6 }; });
+        break;
+      case 'glass':                                   // a burst of thin bright shards
+        many(10, function () { return { kind: 'shard', x: cx + (Math.random() - 0.5) * 40, y: cy, vx: (Math.random() - 0.5) * 320, vy: -60 - Math.random() * 220, life: 0.75, weight: 1.0, tone: 'glassLite' }; });
+        S.flashes.push({ x: cx - BW / 2, y: cy - BH / 2, t: 0 });
+        break;
+      case 'panel':                                   // glass, in blue, and a few sparks
+        many(8, function () { return { kind: 'shard', x: cx + (Math.random() - 0.5) * 40, y: cy, vx: (Math.random() - 0.5) * 300, vy: -60 - Math.random() * 200, life: 0.7, weight: 1.0, tone: 'solarLite' }; });
+        many(4, function () { return { kind: 'fire', x: cx, y: cy, vx: (Math.random() - 0.5) * 260, vy: -80 - Math.random() * 180, life: 0.4, weight: 0.3, tone: 'goldLight' }; });
+        break;
+      case 'sparks':                                  // electric: fast, bright, jittery, then smoke
+        many(12, function (k) { return { kind: 'fire', x: cx + (Math.random() - 0.5) * 30, y: cy, vx: (Math.random() - 0.5) * 320, vy: -60 - Math.random() * 260, life: 0.35 + Math.random() * 0.25, weight: 0.35, tone: k % 3 ? 'goldLight' : 'neonCyan' }; });
+        many(3, function () { return { kind: 'smoke', x: cx + (Math.random() - 0.5) * 20, y: cy, vx: (Math.random() - 0.5) * 30, vy: -30 - Math.random() * 30, life: 0.9, weight: -0.06, tone: 'coalTop' }; });
+        break;
+      case 'neon':                                    // the tube goes: a pink flash and a fizz
+        many(10, function (k) { return { kind: 'fire', x: cx + (Math.random() - 0.5) * 40, y: cy, vx: (Math.random() - 0.5) * 200, vy: -40 - Math.random() * 160, life: 0.45, weight: 0.15, tone: k % 2 ? 'neon' : 'neonCyan' }; });
+        many(3, function () { return { kind: 'smoke', x: cx + (Math.random() - 0.5) * 20, y: cy, vx: (Math.random() - 0.5) * 30, vy: -30, life: 0.8, weight: -0.06, tone: 'neonLite' }; });
+        S.flashes.push({ x: cx - BW / 2, y: cy - BH / 2, t: 0 });
+        break;
+      case 'embers':                                  // embers rise and cool, smoke above them
+        many(9, function () { return { kind: 'ember', x: cx + (Math.random() - 0.5) * 40, y: cy, vx: (Math.random() - 0.5) * 80, vy: -70 - Math.random() * 120, life: 0.9, weight: -0.25, tone: 'slagGlow' }; });
+        many(4, function () { return { kind: 'smoke', x: cx + (Math.random() - 0.5) * 30, y: cy - 4, vx: (Math.random() - 0.5) * 40, vy: -40 - Math.random() * 30, life: 1.0, weight: -0.08, tone: 'coalTop' }; });
+        break;
+    }
+  }
+
+  // One step of every particle. Chunks fall; sparkles and electric sparks slow
+  // down; embers and smoke drift up; leaves and bubbles wander sideways.
+  function stepParts(dt) {
+    for (var i = S.parts.length - 1; i >= 0; i--) {
+      var q = S.parts[i];
+      q.vy += 1260 * (q.weight === undefined ? 1 : q.weight) * dt;
+      if (q.spark || q.kind === 'fire') { q.vx *= 0.96; q.vy *= 0.96; }
+      if (q.kind === 'ember' || q.kind === 'smoke') { q.vx *= 0.98; q.vy *= 0.98; }
+      if (q.kind === 'leaf') { q.vx = Math.sin(q.life * 9 + q.ph) * 70; }
+      if (q.kind === 'bubble') { q.vx = Math.sin(q.life * 7 + q.ph) * 30; }
+      q.x += q.vx * dt; q.y += q.vy * dt;
+      q.life -= dt;
+      if (q.life <= 0) S.parts.splice(i, 1);
+    }
+  }
+
+  function drawParts(g, P) {
+    var ctx = g.ctx;
+    for (var i = 0; i < S.parts.length; i++) {
+      var q = S.parts[i], y = q.y - S.cam, k = q.kind;
+      if (q.spark) {
+        // twinkle: the size flicks between one and two pixels as it fades
+        var tw = Math.floor(q.life * 30) % 2 ? 2 : 1;
+        g.rect(q.x, y, tw * U, tw * U, q.life < 0.25 && tw === 1 ? P.gold : P.sparkle);
+      } else if (k === 'shard') {
+        var horiz = Math.floor(q.life * 12 + q.x) % 2 === 0, len = q.long ? 5 : 3;
+        if (horiz) g.rect(q.x, y, len * U, U, P[q.tone]); else g.rect(q.x, y, U, len * U, P[q.tone]);
+      } else if (k === 'fire') {
+        if (Math.floor(q.life * 40) % 3 === 0) continue;                      // jitter
+        g.rect(q.x, y, U, U, P[q.tone]); g.rect(q.x + U, y, U, U, P.snow);
+      } else if (k === 'ember') {
+        g.rect(q.x, y, 2 * U, 2 * U, q.life > 0.45 ? P[q.tone] : (Math.floor(q.life * 20) % 2 ? P.gold : P.slagTop));
+      } else if (k === 'smoke') {
+        var sz = (2 + Math.round((1 - Math.min(1, q.life)) * 2)) * U;
+        ctx.globalAlpha = Math.min(0.5, q.life * 0.6);
+        g.rect(q.x - sz / 2, y - sz / 2, sz, sz, P[q.tone]);
+        ctx.globalAlpha = 1;
+      } else if (k === 'bubble') {
+        g.rect(q.x, y, 2 * U, 2 * U, P.snow); g.rect(q.x + U, y + U, U, U, P.hollowAir);
+      } else if (k === 'leaf') {
+        var flat = Math.floor(q.life * 8 + q.ph) % 2 === 0;
+        g.rect(q.x, y, flat ? 3 * U : U, flat ? U : 2 * U, P[q.tone]);
+      } else if (k === 'sand') {
+        g.rect(q.x, y, U, U, P[q.tone]);
+      } else {
+        var qs = (q.size || 2) * U;
+        g.rect(q.x, y, qs, qs, P[q.tone]);
+      }
+    }
   }
 
   function breakBlock(g, r, c, noChain) {
@@ -1381,6 +1783,7 @@
       if (m.veg) gainVeg(g, c * BW + BW / 2, rowY(r.n) - 12);
       if (m.bonus) {
         S.bonus += m.bonus;
+        floatText(c * BW + BW / 2, rowY(r.n), '+' + m.bonus, 'goldLight');
         puff(c * BW + BW / 2, rowY(r.n) + BH / 2, 'goldLight', 9);
       }
       // Hollow ice pulls its neighbours down, but they do not pull theirs, so a
@@ -1421,6 +1824,7 @@
   /* ---- lifecycle ----------------------------------------------------- */
 
   function setup(g) {
+    if (S) S.chr = undefined;                // a new climber each run
     // Read here rather than at load, so the dial rebuilds the run with the new
     // length. Nothing else is tuned to it: the zone line, the seam and the
     // place lookup all derive from this one number.
@@ -1430,6 +1834,10 @@
     S.dir = 1; S.streak = 0; S.swing = 0; S.lean = 0; S.face = 0; S.hitBar = 0;
     S.faceDir = 0; S.faceT = 0;
     S.joy = null;
+    S.clock = 0; S.squash = 0;
+    S.floats = []; S.scorePop = 0; S.lastBonus = 0;
+    S.bolts = []; S.strikeFlash = 0;
+    SFX.music.stop();                    // the ready and dead screens are silent
     S.combo = 0; S.comboT = 0; S.comboMult = 1; S.punch = 0; S.levelPop = 0;
     S.notes = []; S.bestMult = 1;
     S.tallyN = 0; S.tallyPts = 0; S.comboBreak = 0;
@@ -1455,7 +1863,8 @@
   }
 
   function headHit(g, r, by, cols) {
-    var stopped = false, broke = false, deadHit = false;
+    var stopped = false, broke = false, deadHit = false, maxHits = 1;
+    var brkMat = ICE, deadMat = ROCK;           // the voices for the one pulse per swing
     var hit = 0;                          // the strongest pulse this swing earned
     for (var k = 0; k < cols.length; k++) {
       var c = cols[k], bt = r.b[c];
@@ -1476,6 +1885,7 @@
           // block says nothing new, so only the first one is felt.
           var id = r.n * COLS + c;
           if (id !== S.lastDead) { deadHit = true; S.lastDead = id; }
+          deadMat = bt;
         }
         stopped = true;
         continue;
@@ -1483,6 +1893,7 @@
       r.d[c] = (r.d[c] || 0) + 1;
       if (r.d[c] >= m.hits) {
         breakBlock(g, r, c); broke = true;
+        if (m.hits >= maxHits) { maxHits = m.hits; brkMat = bt; }
         S.lastDead = -1;
         // A tougher material gives a longer pulse, the same way the hitstop
         // already scales, so the hand feels what the eye sees.
@@ -1494,10 +1905,13 @@
         stopped = true;
         S.lastDead = -1;
         if (!flatHaptics() && buzzAllowed('chip')) hit = Math.max(hit, pulse(BUZZ.chip));
+        r.ht[c] = S.clock;                          // it jolts, then stays leaning
+        SFX.chip(bt);
         shatter(r, c, m, 0.4);                      // chips, the block holds
       }
     }
     if (stopped) {
+      if (deadHit) SFX.dead(deadMat);
       if (deadHit && buzzAllowed('stopped')) hit = Math.max(hit, pulse(BUZZ.hold));
       if (hit > 0) buzz(Math.min(pulse(BUZZ.max), hit));
       // Every shake that comes from hitting a block derives from the one dial,
@@ -1507,6 +1921,7 @@
       S.p.y = by; S.p.vy = 120; g.shake = T.shakeHit * 2; return 'stopped';
     }
     if (broke) {
+      SFX.brk(S.comboMult, brkMat);
       if (hit > 0) buzz(Math.min(pulse(BUZZ.max), hit));
       if (T.mech === DRILL) S.p.vy = Math.min(S.p.vy, -T.smash);
       else { S.p.y = by; S.p.vy = -T.smash; }
@@ -1528,6 +1943,8 @@
     g.control = CONTROL_MODE[T.control] || 'sides';
     g.ss = T.hires ? 2 : 1;
     joystickTrack(g, dt);
+    if (T.music) SFX.music.start(); else SFX.music.stop();
+    SFX.music.key([0, 3, -2, 5][S.zone % 4]);
 
     g.noSave = !T.__isDefault();
 
@@ -1550,6 +1967,23 @@
     }
 
     var real = dt;
+    // A run clock that pauses with hitstop, for the small animations. g.t is
+    // wound back during a freeze, so it cannot be used for this.
+    S.clock += real;
+    // The score punches for a few frames whenever the bonus part moves. The
+    // height part climbs every frame and would punch forever.
+    if (S.bonus !== S.lastBonus) { S.scorePop = 0.14; S.lastBonus = S.bonus; }
+    if (S.scorePop > 0) S.scorePop -= real;
+    for (i = S.bolts.length - 1; i >= 0; i--) {
+      S.bolts[i].t += real;
+      if (S.bolts[i].t > 0.32) S.bolts.splice(i, 1);
+    }
+    if (S.strikeFlash > 0) S.strikeFlash -= real;
+    for (i = S.floats.length - 1; i >= 0; i--) {
+      S.floats[i].t += real;
+      if (S.floats[i].t > 0.7) S.floats.splice(i, 1);
+    }
+    if (S.squash > 0) S.squash = Math.max(0, S.squash - real * 7);
     S.pace = T.spdFrom + (T.spdTo - T.spdFrom) * Math.min(1, g.t / T.spdSecs);
     dt = real * S.pace;
 
@@ -1603,6 +2037,8 @@
             if (isSolid(r.b[cs[k]])) {
               p.y = ry - PH;
               p.vy = -bounceSpeed();
+              S.squash = 1;
+              SFX.land();
               S.lean = 0;                 // stand straight the moment you land
               puff(p.x + PW / 2, ry, MAT[r.b[cs[k]]].tone, 3);
               // cracked ice holds for exactly one bounce, then drops away
@@ -1663,6 +2099,8 @@
         if (S.comboMult > S.bestMult) {
           S.bestMult = S.comboMult;
           note({ kind: 'card', mult: S.comboMult, t: CARD_SECS });
+          SFX.combo(S.comboMult);
+          strike();
         }
         g.shake = Math.max(g.shake, T.shakeHit * 1.6);
       }
@@ -1692,6 +2130,7 @@
       S.bonus += 25;
       S.snow += 420 * (ZONE_ROWS / 16);            // keep the relief per floor the same
       S.zoneFlash = 1.2;
+      SFX.zone();
     }
     if (S.zoneFlash > 0) S.zoneFlash -= real;
     if (S.hurt > 0) S.hurt -= dt;
@@ -1733,14 +2172,7 @@
       }
     }
 
-    for (i = S.parts.length - 1; i >= 0; i--) {
-      var q = S.parts[i];
-      q.vy += 1260 * (q.weight === undefined ? 1 : q.weight) * dt;
-      if (q.spark) { q.vx *= 0.97; q.vy *= 0.97; }
-      q.x += q.vx * dt; q.y += q.vy * dt;
-      q.life -= dt;
-      if (q.life <= 0) S.parts.splice(i, 1);
-    }
+    stepParts(dt);
 
     if (T.snow && S.fly <= 0 && p.y + PH >= S.snow) {
       if (S.shield) {
@@ -1773,267 +2205,516 @@
   }
 
 
-  function penguin(r, P, x, y, k) {
-    var coat = k >= 3;
-    r(x + 5, y, 20, 15, P.ink2);
-    r(x + 6, y + 1, 18, 3, P.slateLite);
-    r(x + 7, y + 5, 16, 10, P.snow);
-    r(x + 10, y + 7, 4, 4, P.ink2);
-    r(x + 17, y + 7, 4, 4, P.ink2);
-    r(x + 11, y + 7, 2, 2, P.snow);
-    r(x + 18, y + 7, 2, 2, P.snow);
-    r(x + 12, y + 12, 7, 5, P.orange);
-    r(x + 12, y + 12, 7, 2, P.flameHot);
-    if (k >= 1) {
-      r(x + 4, y + 15, 22, 4, P.red); r(x + 4, y + 15, 22, 2, P.redLite);
-      r(x + 23, y + 18, 5, 7, P.red);
+  /* ---- climbers ----
+     Every climber is drawn as shapes on a 30 x 45 grid at 1 px a cell -
+     the 30 x 45 collision box itself, four times the cells of the 2 px
+     grid before it. raster() fills ellipses, rectangles, triangles and
+     lines, then 'outline' darkens every edge cell (which is also what
+     keeps a white climber readable on the sky), 'shade' darkens the cells
+     that meet the outline below and to the right so the shapes turn, and
+     'band' recolours whatever is already there across a run of rows;
+     a line or pixel with a trailing token only lands on cells of that token.
+     Nothing recolours with the kit: everything after 'kit' is the scarf,
+     painted only once the boots are on; the pick is the shared axe() at
+     the right shoulder; the coat shows in the HUD only. Every side view
+     faces RIGHT; facing left is the same art mirrored by flipDraw(). */
+  var LEGEND = {'k': 'ink2', 'w': 'snow', 'g': 'slateLite', 's': 'slate', 'o': 'orange', 'O': 'orangeDark', 'r': 'red', 'R': 'redLite', 'y': 'gold', 'Y': 'goldLight', 'b': 'blueIce', 'B': 'blueIceBot', 'T': 'blueIceTop', 'i': 'iron', 'I': 'ironTop', 'd': 'ironBot', 'e': 'glow', 'n': 'strap', 'N': 'strapLite', 'm': 'moss', 'M': 'mossLite', 'a': 'glass', 'A': 'glassLite', 'c': 'coral', 'q': 'brick', 'C': 'coralDark', 'S': 'red'};
+  function raster(ops) {
+    var W = 30, H = 45, base = [], kit = [], g, j, i;
+    for (j = 0; j < H; j++) { base.push(new Array(W).fill('.')); kit.push(new Array(W).fill('.')); }
+    g = base;
+    function set(x, y, t, only) { if (x >= 0 && x < W && y >= 0 && y < H && (!only || g[y][x] === only)) g[y][x] = t; }
+    function ell(cx, cy, rx, ry, t) {
+      for (j = 0; j < H; j++) for (i = 0; i < W; i++) {
+        var dx = (i + 0.5 - cx) / rx, dy = (j + 0.5 - cy) / ry;
+        if (dx * dx + dy * dy <= 1) g[j][i] = t;
+      }
     }
-    r(x + 4, y + 17, 22, 21, coat ? P.gold : P.ink2);
-    r(x + 5, y + 18, 20, 3, coat ? P.goldLight : P.slateLite);
-    r(x + 8, y + 21, 14, 16, P.snow);
-    r(x + 9, y + 24, 3, 3, P.slateLite);
-    r(x, y + 20, 5, 13, coat ? P.goldDeep : P.slate);
-    r(x + 25, y + 20, 5, 13, coat ? P.goldDeep : P.slate);
-    r(x, y + 20, 5, 2, coat ? P.gold : P.slateLite);
-    r(x + 25, y + 20, 5, 2, coat ? P.gold : P.slateLite);
-    r(x + 5, y + 38, 9, 4, k >= 1 ? P.gold : P.orange);
-    r(x + 16, y + 38, 9, 4, k >= 1 ? P.gold : P.orange);
-    r(x + 5, y + 41, 9, 1, P.orangeDark);
-    r(x + 16, y + 41, 9, 1, P.orangeDark);
-    if (k >= 2) axe(r, P, x + 28, y + 16);
-  }
-
-  function yeti(r, P, x, y, k) {
-    var coat = k >= 3, i;
-    for (i = 0; i < 32; i += 3) r(x + 2 + i, y, 2, 4, i % 6 ? P.furBlue : P.furLite);
-    r(x + 2, y + 3, 32, 18, coat ? P.gold : P.furBlue);
-    r(x + 2, y + 3, 32, 3, coat ? P.goldLight : P.furLite);
-    r(x + 5, y + 8, 26, 11, P.furLite);
-    r(x + 10, y + 10, 5, 5, P.ink2);
-    r(x + 22, y + 10, 5, 5, P.ink2);
-    r(x + 11, y + 10, 2, 2, P.snow);
-    r(x + 23, y + 10, 2, 2, P.snow);
-    r(x + 16, y + 15, 5, 3, P.slate);
-    r(x + 14, y + 19, 9, 2, P.ink2);
-    r(x + 6, y + 21, 24, 15, coat ? P.gold : P.furBlue);
-    r(x + 10, y + 24, 16, 10, P.furLite);
-    r(x, y + 22, 7, 12, coat ? P.goldDeep : P.furBlueDark);
-    r(x + 29, y + 22, 7, 12, coat ? P.goldDeep : P.furBlueDark);
-    r(x + 7, y + 36, 10, 6, k >= 1 ? P.gold : P.furBlueDark);
-    r(x + 20, y + 36, 10, 6, k >= 1 ? P.gold : P.furBlueDark);
-    r(x + 7, y + 40, 10, 2, P.strap);
-    r(x + 20, y + 40, 10, 2, P.strap);
-    if (k >= 2) axe(r, P, x + 34, y + 18);
-  }
-
-  function robot(r, P, x, y, k) {
-    var coat = k >= 3;
-    r(x + 13, y, 4, 6, P.steelDark);
-    r(x + 11, y - 4, 8, 5, P.glow);
-    r(x + 4, y + 5, 22, 17, coat ? P.gold : P.steel);
-    r(x + 4, y + 5, 22, 3, coat ? P.goldLight : P.steelLite);
-    r(x + 7, y + 10, 16, 9, P.ink2);
-    r(x + 9, y + 12, 12, 4, P.glow);
-    r(x + 9, y + 12, 5, 2, P.glowDim);
-    r(x + 5, y + 20, 20, 2, P.steelDark);
-    r(x + 5, y + 22, 20, 15, coat ? P.gold : P.slate);
-    r(x + 5, y + 22, 20, 3, coat ? P.goldLight : P.slateLite);
-    r(x + 10, y + 26, 10, 7, P.ink2);
-    r(x + 13, y + 28, 5, 3, P.glow);
-    r(x, y + 23, 6, 12, P.steelDark);
-    r(x + 24, y + 23, 6, 12, P.steelDark);
-    r(x, y + 23, 6, 2, P.steelLite);
-    r(x + 7, y + 37, 7, 6, k >= 1 ? P.gold : P.steelDark);
-    r(x + 16, y + 37, 7, 6, k >= 1 ? P.gold : P.steelDark);
-    r(x + 6, y + 42, 9, 3, P.ink2);
-    r(x + 15, y + 42, 9, 3, P.ink2);
-    if (k >= 2) {
-      r(x + 28, y + 24, 5, 14, P.steelDark);
-      r(x + 27, y + 36, 7, 6, P.steel);
-      r(x + 29, y + 41, 3, 6, P.steelLite);
+    function rect(x, y, w, h, t) { for (j = y; j < y + h; j++) for (i = x; i < x + w; i++) set(i, j, t); }
+    function tri(x1, y1, x2, y2, x3, y3, t) {
+      for (j = 0; j < H; j++) for (i = 0; i < W; i++) {
+        var px = i + 0.5, py = j + 0.5;
+        var d1 = (px - x2) * (y1 - y2) - (x1 - x2) * (py - y2);
+        var d2 = (px - x3) * (y2 - y3) - (x2 - x3) * (py - y3);
+        var d3 = (px - x1) * (y3 - y1) - (x3 - x1) * (py - y1);
+        if (!((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) g[j][i] = t;
+      }
     }
-  }
-
-  function goat(r, P, x, y, k) {
-    var coat = k >= 3;
-    r(x + 27, y + 5, 15, 14, coat ? P.gold : P.cream);
-    r(x + 27, y + 5, 15, 3, coat ? P.goldLight : P.furLite);
-    r(x + 37, y + 11, 7, 8, P.creamDark);
-    r(x + 40, y + 14, 3, 3, P.ink2);
-    r(x + 31, y + 9, 4, 4, P.ink2);
-    r(x + 32, y + 9, 2, 2, P.snow);
-    r(x + 24, y, 6, 10, P.horn);
-    r(x + 29, y - 3, 6, 7, P.horn);
-    r(x + 24, y, 6, 3, P.hornDark);
-    r(x + 29, y - 3, 6, 2, P.hornDark);
-    r(x + 5, y + 12, 27, 16, coat ? P.gold : P.cream);
-    r(x + 5, y + 12, 27, 3, coat ? P.goldLight : P.furLite);
-    r(x + 5, y + 26, 27, 2, P.creamDark);
-    r(x, y + 14, 6, 8, P.cream);
-    if (k >= 1) {
-      r(x + 8, y + 17, 19, 7, P.red); r(x + 8, y + 17, 19, 2, P.redLite);
-      r(x + 13, y + 18, 3, 5, P.gold);
+    function line(x1, y1, x2, y2, t, only) {
+      var dx = Math.abs(x2 - x1), dy = -Math.abs(y2 - y1), sx = x1 < x2 ? 1 : -1, sy = y1 < y2 ? 1 : -1, e = dx + dy, x = x1, y = y1;
+      for (;;) {
+        set(x, y, t, only);
+        if (x === x2 && y === y2) break;
+        var e2 = 2 * e;
+        if (e2 >= dy) { e += dy; x += sx; }
+        if (e2 <= dx) { e += dx; y += sy; }
+      }
     }
-    r(x + 8, y + 28, 6, 8, coat ? P.goldDeep : P.creamDark);
-    r(x + 22, y + 28, 6, 8, coat ? P.goldDeep : P.creamDark);
-    r(x + 7, y + 35, 8, 3, k >= 1 ? P.gold : P.ink2);
-    r(x + 21, y + 35, 8, 3, k >= 1 ? P.gold : P.ink2);
-    if (k >= 2) { r(x + 34, y - 6, 11, 4, P.steel); r(x + 34, y - 6, 11, 2, P.steelDark); }
-  }
-
-  function astronaut(r, P, x, y, k) {
-    var coat = k >= 3;
-    r(x + 4, y, 22, 18, P.suit);
-    r(x + 4, y, 22, 3, P.snow);
-    r(x + 23, y + 3, 3, 13, P.suitDark);
-    r(x + 7, y + 4, 16, 11, P.ink2);
-    r(x + 8, y + 5, 14, 9, coat ? P.gold : P.visor);
-    r(x + 9, y + 6, 6, 3, P.snow);
-    r(x + 17, y + 11, 4, 2, P.visorLite);
-    r(x, y + 18, 30, 4, P.suitDark);
-    r(x + 5, y + 22, 20, 15, coat ? P.gold : P.suit);
-    r(x + 5, y + 22, 20, 3, coat ? P.goldLight : P.snow);
-    r(x + 9, y + 26, 12, 7, P.slate);
-    r(x + 11, y + 28, 4, 3, P.glow);
-    r(x + 17, y + 28, 2, 3, P.red);
-    r(x + 26, y + 23, 6, 12, P.suitDark);
-    r(x + 26, y + 23, 6, 2, P.snow);
-    r(x, y + 23, 5, 11, P.suit);
-    r(x + 25, y + 23, 2, 11, P.suit);
-    r(x + 6, y + 37, 8, 6, k >= 1 ? P.gold : P.suitDark);
-    r(x + 16, y + 37, 8, 6, k >= 1 ? P.gold : P.suitDark);
-    r(x + 6, y + 41, 8, 2, P.ink2);
-    r(x + 16, y + 41, 8, 2, P.ink2);
-    if (k >= 2) axe(r, P, x + 30, y + 18);
-  }
-
-  /* ---- the same five, seen from the side ------------------------------ */
-  /* Each is drawn facing RIGHT. Facing left is the same art mirrored inside
-     its own box, so there is one asset per climber, not two. The mountain goat
-     is already a side view, so it uses its one drawing for both. */
-
-  function penguinSide(r, P, x, y, k) {
-    var coat = k >= 3;
-    var back = coat ? P.gold : P.ink2;
-    var edge = coat ? P.goldLight : P.slateLite;
-    r(x + 9, y, 16, 4, back);                 // head, narrow at the crown
-    r(x + 8, y + 3, 18, 13, back);
-    r(x + 5, y + 14, 21, 25, back);           // body, joined straight to the head
-    r(x + 3, y + 20, 3, 15, back);
-    r(x + 9, y, 16, 2, edge);                 // rim along the crown and the back,
-    r(x + 8, y + 3, 2, 12, edge);             // without it the black vanishes
-    r(x + 5, y + 14, 2, 8, edge);             // into the zone-1 sky
-    r(x + 3, y + 20, 2, 14, edge);
-    r(x + 16, y + 5, 10, 9, P.snow);
-    r(x + 18, y + 6, 4, 4, P.ink2);
-    r(x + 19, y + 6, 2, 2, P.snow);
-    r(x + 25, y + 9, 5, 5, P.orange);
-    r(x + 25, y + 9, 5, 2, P.flameHot);
-    r(x + 14, y + 18, 12, 19, P.snow);
-    r(x, y + 31, 4, 5, coat ? P.goldDeep : P.slate);
-    r(x + 7, y + 20, 6, 16, coat ? P.goldDeep : P.slate);
-    r(x + 7, y + 20, 6, 2, coat ? P.gold : P.slateLite);
-    if (k >= 1) {
-      r(x + 7, y + 14, 19, 4, P.red);
-      r(x + 7, y + 14, 19, 2, P.redLite);
-      r(x + 2, y + 16, 6, 8, P.red);
+    function outline(t) {
+      var out = [];
+      for (j = 0; j < H; j++) for (i = 0; i < W; i++) {
+        if (g[j][i] === '.') continue;
+        if (j === 0 || j === H - 1 || i === 0 || i === W - 1 || g[j - 1][i] === '.' || g[j + 1][i] === '.' || g[j][i - 1] === '.' || g[j][i + 1] === '.') out.push([i, j]);
+      }
+      out.forEach(function (c) { g[c[1]][c[0]] = t; });
     }
-    r(x + 8, y + 39, 9, 4, k >= 1 ? P.gold : P.orange);
-    r(x + 16, y + 39, 11, 4, k >= 1 ? P.gold : P.orange);
-    r(x + 8, y + 42, 9, 1, P.orangeDark);
-    r(x + 16, y + 42, 11, 1, P.orangeDark);
-    if (k >= 2) axe(r, P, x + 25, y + 19);
+    function shade(map) {
+      var out = [];
+      for (j = 0; j < H; j++) for (i = 0; i < W; i++) {
+        var m = map[g[j][i]];
+        if (!m) continue;
+        var below = j + 1 < H ? g[j + 1][i] : '.', right = i + 1 < W ? g[j][i + 1] : '.';
+        if (below === '.' || below === 'k' || right === '.' || right === 'k') out.push([i, j, m]);
+      }
+      out.forEach(function (c) { g[c[1]][c[0]] = c[2]; });
+    }
+    function band(y0, y1, t) { for (j = y0; j <= y1; j++) for (i = 0; i < W; i++) if (g[j][i] !== '.' && g[j][i] !== 'k') g[j][i] = t; }
+    ops.forEach(function (o) {
+      switch (o[0]) {
+        case 'E': ell(o[1], o[2], o[3], o[4], o[5]); break;
+        case 'Rc': rect(o[1], o[2], o[3], o[4], o[5]); break;
+        case 'T': tri(o[1], o[2], o[3], o[4], o[5], o[6], o[7]); break;
+        case 'L': line(o[1], o[2], o[3], o[4], o[5], o[6]); break;   // o[6]: only over that token
+        case 'X': set(o[1], o[2], o[3], o[4]); break;
+        case 'outline': outline(o[1] || 'k'); break;
+        case 'shade': shade(o[1]); break;
+        case 'band': band(o[1], o[2], o[3]); break;
+        case 'kit': g = kit; break;
+      }
+    });
+    function join(rows) { return rows.map(function (r) { return r.join(''); }); }
+    return { base: join(base), kit: join(kit) };
   }
-
-  function yetiSide(r, P, x, y, k) {
-    var coat = k >= 3, i;
-    var fur = coat ? P.gold : P.furBlue;
-    var lite = coat ? P.goldLight : P.furLite;
-    for (i = 0; i < 22; i += 3) r(x + 8 + i, y, 2, 4, i % 6 ? fur : lite);
-    r(x + 7, y + 3, 24, 18, fur);
-    r(x + 7, y + 3, 3, 17, lite);
-    r(x + 18, y + 7, 13, 12, P.furLite);
-    r(x + 29, y + 12, 5, 5, P.furLite);       // muzzle out front
-    r(x + 30, y + 13, 3, 2, P.slate);
-    r(x + 22, y + 9, 4, 5, P.ink2);           // one eye, so it reads as profile
-    r(x + 23, y + 9, 2, 2, P.snow);
-    r(x + 24, y + 17, 8, 2, P.ink2);
-    r(x + 5, y + 20, 26, 17, fur);
-    r(x + 5, y + 20, 3, 16, lite);
-    r(x + 13, y + 24, 17, 11, P.furLite);
-    r(x, y + 23, 6, 10, coat ? P.goldDeep : P.furBlueDark);
-    r(x + 27, y + 22, 8, 14, coat ? P.goldDeep : P.furBlueDark);
-    r(x + 6, y + 37, 11, 6, k >= 1 ? P.gold : P.furBlueDark);
-    r(x + 17, y + 37, 14, 6, k >= 1 ? P.gold : P.furBlueDark);
-    r(x + 6, y + 41, 11, 2, P.strap);
-    r(x + 17, y + 41, 14, 2, P.strap);
-    if (k >= 2) axe(r, P, x + 33, y + 19);
-  }
-
-  function robotSide(r, P, x, y, k) {
-    var coat = k >= 3;
-    var shell = coat ? P.gold : P.steel;
-    var lite = coat ? P.goldLight : P.steelLite;
-    r(x + 11, y, 4, 6, P.steelDark);
-    r(x + 9, y - 4, 8, 5, P.glow);
-    r(x + 7, y + 5, 19, 17, shell);
-    r(x + 7, y + 5, 19, 3, lite);
-    r(x + 7, y + 5, 3, 17, P.steelDark);      // back plate of the head
-    r(x + 18, y + 9, 9, 11, P.ink2);          // visor set into the front face
-    r(x + 19, y + 11, 8, 6, P.glow);
-    r(x + 19, y + 11, 3, 2, P.glowDim);
-    r(x + 1, y + 7, 6, 14, P.steelDark);      // pack on the back
-    r(x + 1, y + 7, 6, 2, P.steelLite);
-    r(x + 2, y + 21, 4, 4, P.glowDim);
-    r(x + 7, y + 22, 17, 15, coat ? P.gold : P.slate);
-    r(x + 7, y + 22, 17, 3, coat ? P.goldLight : P.slateLite);
-    r(x + 13, y + 26, 8, 7, P.ink2);
-    r(x + 15, y + 28, 4, 3, P.glow);
-    r(x + 1, y + 25, 6, 10, P.steelDark);
-    r(x + 22, y + 24, 6, 13, P.steelDark);
-    r(x + 22, y + 24, 6, 2, P.steelLite);
-    r(x + 8, y + 37, 9, 6, k >= 1 ? P.gold : P.steelDark);
-    r(x + 16, y + 37, 11, 6, k >= 1 ? P.gold : P.steelDark);
-    r(x + 7, y + 42, 10, 3, P.ink2);
-    r(x + 16, y + 42, 12, 3, P.ink2);
-    if (k >= 2) {
-      r(x + 28, y + 24, 5, 14, P.steelDark);
-      r(x + 27, y + 36, 7, 6, P.steel);
-      r(x + 29, y + 41, 3, 6, P.steelLite);
+  function paint(r, P, x, y, rows) {
+    for (var j = 0; j < rows.length; j++) {
+      var row = rows[j], i = 0;
+      while (i < row.length) {
+        var ch = row.charAt(i);
+        if (ch === '.') { i++; continue; }
+        var n = 1;
+        while (i + n < row.length && row.charAt(i + n) === ch) n++;
+        r(x + i, y + j, n, 1, P[LEGEND[ch]]);
+        i += n;
+      }
     }
   }
-
-  function astronautSide(r, P, x, y, k) {
-    var coat = k >= 3;
-    r(x + 9, y, 15, 2, P.suit);               // helmet, corners cut to round it
-    r(x + 7, y + 1, 19, 16, P.suit);
-    r(x + 9, y + 16, 15, 3, P.suit);
-    r(x + 8, y + 1, 3, 15, P.snow);
-    r(x + 14, y + 4, 13, 10, P.ink2);
-    r(x + 15, y + 5, 12, 8, coat ? P.gold : P.visor);
-    r(x + 16, y + 6, 4, 3, P.snow);
-    r(x + 23, y + 10, 3, 2, P.visorLite);
-    r(x, y + 5, 7, 16, P.suitDark);           // life pack on the back
-    r(x, y + 5, 7, 2, P.snow);
-    r(x + 1, y + 21, 5, 3, P.slate);
-    r(x + 4, y + 18, 22, 4, P.suitDark);
-    r(x + 6, y + 22, 19, 15, coat ? P.gold : P.suit);
-    r(x + 6, y + 22, 19, 3, coat ? P.goldLight : P.snow);
-    r(x + 10, y + 26, 11, 7, P.slate);
-    r(x + 12, y + 28, 4, 3, P.glow);
-    r(x + 17, y + 28, 2, 3, P.red);
-    r(x + 1, y + 24, 6, 11, P.suit);
-    r(x + 23, y + 23, 6, 13, P.suitDark);
-    r(x + 7, y + 37, 9, 6, k >= 1 ? P.gold : P.suitDark);
-    r(x + 15, y + 37, 12, 6, k >= 1 ? P.gold : P.suitDark);
-    r(x + 7, y + 41, 9, 2, P.ink2);
-    r(x + 15, y + 41, 12, 2, P.ink2);
-    if (k >= 2) axe(r, P, x + 28, y + 19);
+  function sprite(ops) {
+    var art = raster(ops);
+    return function (r, P, x, y, k) {
+      paint(r, P, x, y, art.base);
+      if (k >= 1) paint(r, P, x, y, art.kit);
+      if (k >= 2) axe(r, P, x + 27, y + 16);
+    };
   }
 
-  var CHAR_DRAW = [penguin, yeti, robot, goat, astronaut];
-  // The goat is already in profile, so its one drawing serves as its side view.
-  var CHAR_SIDE = [penguinSide, yetiSide, robotSide, goat, astronautSide];
+  var PENGUIN_F = [
+    ['E',15,28,11,15,'k'],
+    ['E',15,12,10,10,'k'],
+    ['E',3,29,3,9,'k'],
+    ['E',27,29,3,9,'k'],
+    ['E',10,42,4,2,'o'],
+    ['E',20,42,4,2,'o'],
+    ['outline'],
+    ['E',15,30,7,11,'w'],
+    ['E',11,12,4,5,'w'],
+    ['E',19,12,4,5,'w'],
+    ['Rc',8,4,6,2,'g'],
+    ['shade',{'w':'g','o':'O'}],
+    ['Rc',10,10,2,3,'k'],
+    ['Rc',18,10,2,3,'k'],
+    ['X',11,10,'w'],
+    ['X',19,10,'w'],
+    ['T',12,15,18,15,15,20,'o'],
+    ['Rc',13,15,4,1,'Y'],
+    ['kit'],
+    ['Rc',6,21,18,3,'S'],
+    ['Rc',21,24,3,6,'S']
+  ];
+  var PENGUIN_S = [
+    ['E',14,28,10,15,'k'],
+    ['E',15,12,10,10,'k'],
+    ['T',3,34,7,24,9,36,'k'],
+    ['E',15,42,6,2,'o'],
+    ['outline'],
+    ['E',17,30,6,11,'w'],
+    ['E',19,12,5,5,'w'],
+    ['E',10,29,3,8,'g'],
+    ['E',10,29,2,7,'k'],
+    ['Rc',9,4,7,2,'g'],
+    ['shade',{'w':'g','o':'O'}],
+    ['Rc',20,10,2,3,'k'],
+    ['X',21,10,'w'],
+    ['T',23,13,29,15,23,18,'o'],
+    ['Rc',23,13,4,1,'Y'],
+    ['kit'],
+    ['Rc',8,21,16,3,'S'],
+    ['Rc',8,24,3,6,'S']
+  ];
+
+  var ROBOT_F = [
+    ['Rc',14,0,2,4,'k'],
+    ['Rc',7,4,16,14,'i'],
+    ['Rc',13,18,4,2,'s'],
+    ['Rc',5,20,20,18,'i'],
+    ['Rc',1,22,4,12,'i'],
+    ['Rc',25,22,4,12,'i'],
+    ['Rc',8,38,5,6,'s'],
+    ['Rc',17,38,5,6,'s'],
+    ['outline'],
+    ['Rc',8,5,14,1,'I'],
+    ['Rc',8,5,1,12,'I'],
+    ['Rc',6,21,18,1,'I'],
+    ['Rc',6,21,1,16,'I'],
+    ['shade',{'i':'d'}],
+    ['Rc',9,7,12,8,'k'],
+    ['Rc',10,8,10,6,'e'],
+    ['Rc',11,9,2,2,'w'],
+    ['Rc',9,24,10,8,'I'],
+    ['Rc',10,25,8,6,'d'],
+    ['E',14,28,2,2,'e'],
+    ['Rc',21,24,2,2,'r'],
+    ['Rc',21,28,2,2,'y'],
+    ['E',15,1,2,2,'r'],
+    ['kit'],
+    ['Rc',6,19,18,2,'S']
+  ];
+  var ROBOT_S = [
+    ['Rc',14,0,2,4,'k'],
+    ['Rc',8,4,15,14,'i'],
+    ['Rc',13,18,4,2,'s'],
+    ['Rc',6,20,18,18,'i'],
+    ['Rc',8,38,6,6,'s'],
+    ['Rc',16,38,6,6,'s'],
+    ['outline'],
+    ['Rc',9,5,13,1,'I'],
+    ['Rc',7,21,16,1,'I'],
+    ['Rc',9,23,5,12,'d'],
+    ['Rc',9,23,5,1,'I'],
+    ['shade',{'i':'d'}],
+    ['Rc',15,7,7,8,'k'],
+    ['Rc',16,8,5,6,'e'],
+    ['Rc',17,9,2,2,'w'],
+    ['Rc',16,24,6,8,'I'],
+    ['Rc',17,25,4,6,'d'],
+    ['E',19,28,2,2,'e'],
+    ['E',15,1,2,2,'r'],
+    ['kit'],
+    ['Rc',7,19,16,2,'S']
+  ];
+
+  var CUB_F = [
+    ['E',15,30,12,13,'w'],
+    ['E',15,13,11,11,'w'],
+    ['E',5,5,4,4,'w'],
+    ['E',25,5,4,4,'w'],
+    ['E',3,31,3,9,'w'],
+    ['E',27,31,3,9,'w'],
+    ['E',9,42,5,2,'w'],
+    ['E',21,42,5,2,'w'],
+    ['outline'],
+    ['E',5,5,2,2,'g'],
+    ['E',25,5,2,2,'g'],
+    ['E',15,32,7,9,'g'],
+    ['E',15,17,4,3,'g'],
+    ['shade',{'w':'g'}],
+    ['Rc',10,11,2,2,'k'],
+    ['Rc',18,11,2,2,'k'],
+    ['E',15,16,2,1,'k'],
+    ['kit'],
+    ['Rc',6,22,18,3,'S'],
+    ['Rc',21,25,3,5,'S']
+  ];
+  var CUB_S = [
+    ['E',14,30,11,13,'w'],
+    ['E',16,13,11,11,'w'],
+    ['E',9,5,4,4,'w'],
+    ['E',21,4,4,4,'w'],
+    ['E',15,42,7,2,'w'],
+    ['outline'],
+    ['E',21,4,2,2,'g'],
+    ['E',17,32,6,9,'g'],
+    ['E',10,31,4,9,'g'],
+    ['E',10,31,3,8,'w'],
+    ['E',23,16,4,3,'g'],
+    ['shade',{'w':'g'}],
+    ['E',26,15,2,1,'k'],
+    ['Rc',20,11,2,2,'k'],
+    ['kit'],
+    ['Rc',8,22,16,3,'S'],
+    ['Rc',8,25,3,5,'S']
+  ];
+
+  var CUBE_F = [
+    ['Rc',3,6,24,24,'A'],
+    ['Rc',9,30,3,14,'k'],
+    ['Rc',18,30,3,14,'k'],
+    ['Rc',7,42,6,3,'k'],
+    ['Rc',17,42,6,3,'k'],
+    ['outline'],
+    ['Rc',4,7,22,2,'w'],
+    ['Rc',4,7,2,22,'w'],
+    ['Rc',4,26,22,3,'a'],
+    ['Rc',24,9,2,20,'a'],
+    ['Rc',9,13,3,4,'k'],
+    ['Rc',18,13,3,4,'k'],
+    ['X',10,13,'w'],
+    ['X',19,13,'w'],
+    ['Rc',12,21,6,2,'k']
+  ];
+  var CUBE_S = [
+    ['Rc',3,8,20,22,'A'],
+    ['Rc',23,8,5,22,'a'],
+    ['Rc',3,6,25,2,'w'],
+    ['Rc',9,30,3,14,'k'],
+    ['Rc',17,30,3,14,'k'],
+    ['Rc',7,42,6,3,'k'],
+    ['Rc',16,42,6,3,'k'],
+    ['outline'],
+    ['Rc',4,9,2,20,'w'],
+    ['Rc',12,14,3,4,'k'],
+    ['Rc',19,14,3,4,'k'],
+    ['X',13,14,'w'],
+    ['X',20,14,'w'],
+    ['Rc',15,22,6,2,'k']
+  ];
+
+  var SNOWMAN_F = [
+    ['E',15,34,11,10,'w'],
+    ['E',15,21,8,7,'w'],
+    ['E',15,10,7,7,'w'],
+    ['Rc',10,0,10,5,'k'],
+    ['Rc',7,4,16,2,'k'],
+    ['outline'],
+    ['Rc',11,3,8,1,'r'],
+    ['shade',{'w':'g'}],
+    ['L',1,19,8,23,'n'],
+    ['L',22,23,29,19,'n'],
+    ['L',3,19,1,16,'n'],
+    ['Rc',12,9,2,2,'k'],
+    ['Rc',17,9,2,2,'k'],
+    ['Rc',14,12,3,3,'o'],
+    ['X',15,14,'O'],
+    ['X',11,14,'k'],
+    ['X',18,14,'k'],
+    ['Rc',13,15,4,1,'k'],
+    ['Rc',14,20,2,2,'k'],
+    ['Rc',14,24,2,2,'k'],
+    ['Rc',14,33,2,2,'k'],
+    ['Rc',14,38,2,2,'k'],
+    ['kit'],
+    ['Rc',8,16,14,3,'S'],
+    ['Rc',19,19,3,5,'S']
+  ];
+  var SNOWMAN_S = [
+    ['E',15,34,11,10,'w'],
+    ['E',15,21,8,7,'w'],
+    ['E',16,10,7,7,'w'],
+    ['Rc',11,0,10,5,'k'],
+    ['Rc',8,4,16,2,'k'],
+    ['outline'],
+    ['Rc',12,3,8,1,'r'],
+    ['shade',{'w':'g'}],
+    ['L',4,18,11,23,'n'],
+    ['L',6,19,4,15,'n'],
+    ['Rc',18,9,2,2,'k'],
+    ['T',20,11,28,13,20,15,'o'],
+    ['X',20,13,'O'],
+    ['Rc',18,15,4,1,'k'],
+    ['Rc',17,20,2,2,'k'],
+    ['Rc',17,24,2,2,'k'],
+    ['Rc',17,33,2,2,'k'],
+    ['Rc',17,38,2,2,'k'],
+    ['kit'],
+    ['Rc',9,16,14,3,'S'],
+    ['Rc',9,19,3,5,'S']
+  ];
+
+  var MUG_F = [
+    ['Rc',4,10,20,26,'r'],
+    ['Rc',24,15,5,3,'r'],
+    ['Rc',24,24,5,3,'r'],
+    ['Rc',27,15,2,12,'r'],
+    ['Rc',8,38,4,6,'k'],
+    ['Rc',18,38,4,6,'k'],
+    ['outline'],
+    ['E',14,10,10,2,'R'],
+    ['E',14,11,7,1,'n'],
+    ['Rc',10,10,3,2,'w'],
+    ['Rc',15,10,3,2,'w'],
+    ['Rc',5,13,2,18,'R'],
+    ['shade',{'r':'q'}],
+    ['Rc',8,18,2,3,'k'],
+    ['Rc',18,18,2,3,'k'],
+    ['Rc',11,25,6,2,'k'],
+    ['X',10,24,'k'],
+    ['X',17,24,'k'],
+    ['L',9,1,9,6,'g'],
+    ['L',14,0,14,5,'g'],
+    ['L',19,1,19,6,'g'],
+    ['kit'],
+    ['Rc',4,30,20,3,'S']
+  ];
+  var MUG_S = [
+    ['Rc',4,10,20,26,'r'],
+    ['Rc',24,15,5,3,'r'],
+    ['Rc',24,24,5,3,'r'],
+    ['Rc',27,15,2,12,'r'],
+    ['Rc',8,38,4,6,'k'],
+    ['Rc',18,38,4,6,'k'],
+    ['outline'],
+    ['E',14,10,10,2,'R'],
+    ['E',14,11,7,1,'n'],
+    ['Rc',10,10,3,2,'w'],
+    ['Rc',15,10,3,2,'w'],
+    ['Rc',5,13,2,18,'R'],
+    ['shade',{'r':'q'}],
+    ['Rc',11,18,2,3,'k'],
+    ['Rc',19,18,2,3,'k'],
+    ['Rc',13,25,6,2,'k'],
+    ['X',12,24,'k'],
+    ['X',19,24,'k'],
+    ['L',9,1,9,6,'g'],
+    ['L',14,0,14,5,'g'],
+    ['L',19,1,19,6,'g'],
+    ['kit'],
+    ['Rc',4,30,20,3,'S']
+  ];
+
+  var CONE_F = [
+    ['T',15,1,4,38,26,38,'o'],
+    ['Rc',2,38,26,4,'k'],
+    ['Rc',7,42,5,3,'k'],
+    ['Rc',18,42,5,3,'k'],
+    ['outline'],
+    ['band',17,21,'w'],
+    ['band',28,33,'w'],
+    ['shade',{'o':'O'}],
+    ['Rc',12,22,2,3,'k'],
+    ['Rc',17,22,2,3,'k'],
+    ['Rc',13,26,5,1,'k']
+  ];
+  var CONE_S = [
+    ['T',15,1,4,38,26,38,'o'],
+    ['Rc',2,38,26,4,'k'],
+    ['Rc',7,42,5,3,'k'],
+    ['Rc',18,42,5,3,'k'],
+    ['outline'],
+    ['band',17,21,'w'],
+    ['band',28,33,'w'],
+    ['shade',{'o':'O'}],
+    ['Rc',14,22,2,3,'k'],
+    ['Rc',19,22,2,3,'k'],
+    ['Rc',15,26,5,1,'k']
+  ];
+
+  var CACTUS_F = [
+    ['E',15,20,5,13,'m'],
+    ['Rc',3,14,4,9,'m'],
+    ['Rc',3,21,9,4,'m'],
+    ['E',5,14,2,2,'m'],
+    ['Rc',23,11,4,10,'m'],
+    ['Rc',18,19,9,4,'m'],
+    ['E',25,11,2,2,'m'],
+    ['E',15,6,3,2,'r'],
+    ['Rc',7,33,16,3,'N'],
+    ['Rc',8,36,14,5,'n'],
+    ['Rc',9,41,12,2,'n'],
+    ['Rc',9,42,4,3,'k'],
+    ['Rc',17,42,4,3,'k'],
+    ['outline'],
+    ['X',15,6,'R'],
+    ['L',15,9,15,32,'M','m'],
+    ['L',11,12,11,30,'M','m'],
+    ['L',19,12,19,30,'M','m'],
+    ['X',9,13,'w','m'],
+    ['X',21,17,'w','m'],
+    ['X',13,10,'w','m'],
+    ['X',17,29,'w','m'],
+    ['X',4,17,'w','m'],
+    ['X',25,15,'w','m'],
+    ['X',12,27,'w','m'],
+    ['Rc',12,15,2,3,'k'],
+    ['Rc',17,15,2,3,'k'],
+    ['Rc',13,21,5,2,'k']
+  ];
+  var CACTUS_S = [
+    ['E',15,20,5,13,'m'],
+    ['Rc',3,14,4,9,'m'],
+    ['Rc',3,21,9,4,'m'],
+    ['E',5,14,2,2,'m'],
+    ['Rc',23,11,4,10,'m'],
+    ['Rc',18,19,9,4,'m'],
+    ['E',25,11,2,2,'m'],
+    ['E',15,6,3,2,'r'],
+    ['Rc',7,33,16,3,'N'],
+    ['Rc',8,36,14,5,'n'],
+    ['Rc',9,41,12,2,'n'],
+    ['Rc',9,42,4,3,'k'],
+    ['Rc',17,42,4,3,'k'],
+    ['outline'],
+    ['X',15,6,'R'],
+    ['L',15,9,15,32,'M','m'],
+    ['L',11,12,11,30,'M','m'],
+    ['L',19,12,19,30,'M','m'],
+    ['X',9,13,'w','m'],
+    ['X',21,17,'w','m'],
+    ['X',13,10,'w','m'],
+    ['X',17,29,'w','m'],
+    ['X',4,17,'w','m'],
+    ['X',25,15,'w','m'],
+    ['X',12,27,'w','m'],
+    ['Rc',14,15,2,3,'k'],
+    ['Rc',18,15,2,3,'k'],
+    ['Rc',15,21,4,2,'k']
+  ];
+
+  var CREAM_F = [
+    ['E',15,12,10,8,'c'],
+    ['E',15,21,11,7,'w'],
+    ['T',4,27,26,27,15,44,'y'],
+    ['E',15,3,2,2,'r'],
+    ['outline'],
+    ['shade',{'w':'g','c':'C','y':'O'}],
+    ['L',7,30,13,43,'O','y'],
+    ['L',23,30,17,43,'O','y'],
+    ['L',15,29,15,43,'O','y'],
+    ['L',6,33,24,33,'O','y'],
+    ['L',9,38,21,38,'O','y'],
+    ['X',10,8,'w'],
+    ['X',19,11,'w'],
+    ['X',13,14,'w'],
+    ['X',17,7,'w'],
+    ['Rc',11,19,2,3,'k'],
+    ['Rc',17,19,2,3,'k'],
+    ['Rc',13,24,4,1,'k'],
+    ['X',12,23,'k'],
+    ['X',17,23,'k']
+  ];
+  var CREAM_S = [
+    ['E',15,12,10,8,'c'],
+    ['E',15,21,11,7,'w'],
+    ['T',4,27,26,27,15,44,'y'],
+    ['E',15,3,2,2,'r'],
+    ['outline'],
+    ['shade',{'w':'g','c':'C','y':'O'}],
+    ['L',7,30,13,43,'O','y'],
+    ['L',23,30,17,43,'O','y'],
+    ['L',15,29,15,43,'O','y'],
+    ['L',6,33,24,33,'O','y'],
+    ['L',9,38,21,38,'O','y'],
+    ['X',10,8,'w'],
+    ['X',19,11,'w'],
+    ['X',13,14,'w'],
+    ['X',17,7,'w'],
+    ['Rc',14,19,2,3,'k'],
+    ['Rc',19,19,2,3,'k'],
+    ['Rc',16,24,4,1,'k'],
+    ['X',15,23,'k'],
+    ['X',20,23,'k']
+  ];
+
+  var CHAR_DRAW = [sprite(PENGUIN_F), sprite(ROBOT_F), sprite(CUB_F), sprite(CUBE_F), sprite(SNOWMAN_F), sprite(MUG_F), sprite(CONE_F), sprite(CACTUS_F), sprite(CREAM_F)];
+  var CHAR_SIDE = [sprite(PENGUIN_S), sprite(ROBOT_S), sprite(CUB_S), sprite(CUBE_S), sprite(SNOWMAN_S), sprite(MUG_S), sprite(CONE_S), sprite(CACTUS_S), sprite(CREAM_S)];
 
   // The lean is a shear about the feet, not a canvas rotation. Each 1px row of
   // the sprite moves sideways by its own height above the ground, rounded to a
@@ -2067,9 +2748,36 @@
   // box, so a wider character overhangs the sides but never changes the game.
   // S.face picks the drawing: 0 straight on, -1 and 1 the side view.
   function drawPlayer(g, P, x, y) {
-    var i = Math.max(0, Math.min(CHARS.length - 1, T.chr));
+    // The waddle: while moving sideways the sprite bobs one cell up and down
+    // ten times a second. Chosen over the lean from the animation picker.
+    if (T.anim && S.face) y -= (Math.floor(S.clock * 10) % 2) * U;
+    if (S.chr === undefined) {                // rolled once a run, from the pool only
+      var pool = [];
+      for (var pi = 0; pi < CHARS.length; pi++) if (CHARS[pi].pool) pool.push(pi);
+      S.chr = pool[Math.floor(Math.random() * pool.length)];
+    }
+    var i = T.chr ? Math.min(CHARS.length - 1, T.chr - 1) : S.chr;
     var c = CHARS[i];
     var sx = x + (PW - c.w) / 2, sy = y + PH - c.h;
+    // Squash and stretch, anchored at the feet. Landing flattens the sprite for
+    // about 140ms; a fast rise stretches it a little the other way. Both are
+    // scaled by the SQUASH dial and are the one place a sprite leaves its grid,
+    // on purpose and for a few frames.
+    var ctx = g.ctx, amt = T.squash / 100, kx = 1, ky = 1;
+    if (amt > 0) {
+      if (S.squash > 0) { kx += amt * S.squash; ky -= amt * S.squash; }
+      else if (S.p.vy < -500) {
+        var up = Math.min(1, (-S.p.vy - 500) / 900);
+        kx -= amt * 0.45 * up; ky += amt * 0.55 * up;
+      }
+    }
+    var scaled = kx !== 1 || ky !== 1;
+    if (scaled) {
+      ctx.save();
+      ctx.translate(x + PW / 2, y + PH);
+      ctx.scale(kx, ky);
+      ctx.translate(-(x + PW / 2), -(y + PH));
+    }
     var base = function (a, b, w, h, col) { g.rect(a, b, w, h, col); };
     // flip is outermost so it receives sprite coordinates; the lean then shifts
     // the already-mirrored result, which keeps the tilt in screen space.
@@ -2082,6 +2790,7 @@
       sw(x + 6, y - 21, 18, 3, P.steelDark);
       sw(x + 12, y - 12, 6, 12, P.strap);
     }
+    if (scaled) ctx.restore();
   }
 
   function drawCondor(g, P, x, y, t) {
@@ -2110,8 +2819,10 @@
     g.rect(fx, y + 9, 10, 10, P.snow);
     g.rect(fx + (dir < 0 ? 2 : 4), y + 12, 3, 3, P.ink);
     g.rect(fx + (dir < 0 ? 0 : 7), y + 15, 3, 3, P.gold);
-    g.rect(x + 6, y + 24, 6, 3, P.topiDark);
-    g.rect(x + 21, y + 24, 6, 3, P.topiDark);
+    // Two feet, alternating one cell forward and back, so it walks.
+    var st = T.anim ? (Math.floor(S.clock * 6) % 2) * U : 0;
+    g.rect(x + 6 + st, y + 24, 6, 3, P.topiDark);
+    g.rect(x + 21 - st, y + 24, 6, 3, P.topiDark);
   }
 
   function drawBird(g, P, x, y, vx, f) {
@@ -2131,20 +2842,130 @@
 
   // A block that has taken a hit but not broken wears the cracks, so a two-hit
   // material never looks like the game ignored you.
-  function cracks(g, P, x, y) {
-    g.rect(x + 14, y + 2, 2, 9, P.crackLine);
-    g.rect(x + 15, y + 10, 7, 2, P.crackLine);
-    g.rect(x + 21, y + 10, 2, 8, P.crackLine);
-    g.rect(x + 35, y + 4, 2, 7, P.crackLine);
-    g.rect(x + 36, y + 11, 8, 2, P.crackLine);
-    g.rect(x + 43, y + 12, 2, 8, P.crackLine);
+  function cracks(g, P, x, y, seed) {
+    var o = (seed || 0) * 5;                              // the pattern walks with the seed
+    g.rect(x + 14 + o, y + 2, 2, 9, P.crackLine);
+    g.rect(x + 15 + o, y + 10, 7, 2, P.crackLine);
+    g.rect(x + 21 + o, y + 10, 2, 8, P.crackLine);
+    g.rect(x + 35 - o, y + 4, 2, 7, P.crackLine);
+    g.rect(x + 36 - o, y + 11, 8, 2, P.crackLine);
+    g.rect(x + 43 - o, y + 12, 2, 8, P.crackLine);
     g.rect(x + 6, y + 15, 8, 2, P.crackLine);
   }
 
-  function drawBlock(g, P, x, y, strata, kind, dmg) {
+  // What a CHIPPED block looks like, by family. Stone loses a corner, wood
+  // splits, ice fractures, glass webs, a brick falls out, snow slides. The
+  // second state used to be the same cracks on everything; it is the first
+  // thing a player sees about a material's nature, so it should differ.
+  function damageLook(g, P, x, y, kind, seed) {
+    var sd = seed || 0;
+    if (kind === BRICK) {                                  // a brick gone from the top course
+      var bx = x + (sd % 2 ? 21 : 41);
+      g.rect(bx, y + 1, 18, 6, P.mortar);
+      g.rect(bx + 2, y + 2, 14, 4, P.brickBot);
+      g.rect(x + 8, y + 9, 2, 12, P.crackLine);
+      return;
+    }
+    if (kind === SANDSTONE) {                              // a crumbled corner, grains below it
+      var cx = sd % 2 ? x : x + BW - 9;
+      g.rect(cx, y, 9, 3, P.sandBot); g.rect(cx + (sd % 2 ? 0 : 3), y + 3, 6, 3, P.sandBot);
+      g.rect(cx + 2, y + BH, 2, 2, P.sand); g.rect(cx + 6, y + BH + 3, 2, 2, P.sand);
+      g.rect(x + 22, y + 6, 2, 12, P.crackLine);
+      return;
+    }
+    if (kind === WOOD || kind === MOSSLOG) {               // a split, and splinters standing out
+      var sx = x + 24 + sd * 4;
+      g.rect(sx, y + 2, 2, 8, P.crackLine); g.rect(sx + 2, y + 9, 2, 6, P.crackLine); g.rect(sx, y + 14, 2, 8, P.crackLine);
+      g.rect(sx - 4, y - 5, 2, 6, P.woodTop); g.rect(sx + 5, y - 3, 2, 4, P.woodTop);
+      return;
+    }
+    if (kind === SEAGLASS) {                               // a web: centre, ring, spokes
+      var wx = x + 30 + (sd - 1) * 6, wy = y + 12;
+      g.rect(wx - 1, wy - 1, 3, 3, P.glassLite);
+      g.rect(wx - 8, wy - 6, 16, 1, P.crackLine); g.rect(wx - 8, wy + 6, 16, 1, P.crackLine);
+      g.rect(wx - 9, wy - 6, 1, 13, P.crackLine); g.rect(wx + 8, wy - 6, 1, 13, P.crackLine);
+      g.rect(wx - 14, wy, 28, 1, P.crackLine); g.rect(wx, y + 2, 1, 20, P.crackLine);
+      g.rect(wx - 12, wy - 10, 1, 1, P.crackLine); g.rect(wx + 11, wy + 9, 1, 1, P.crackLine);
+      return;
+    }
+    if (kind === MOONROCK || kind === ROCK || kind === OBSIDIAN) {   // a corner knocked off
+      var nx = sd % 2 ? x : x + BW - 10;
+      g.rect(nx, y, 10, 4, kind === OBSIDIAN ? P.obsidianBot : P.rockBot);
+      g.rect(nx + (sd % 2 ? 0 : 4), y + 4, 6, 3, kind === OBSIDIAN ? P.obsidianBot : P.rockBot);
+      cracks(g, P, x, y, sd);
+      return;
+    }
+    if (kind === SNOWCAP) {                                // the cap has slid to one side
+      g.rect(x, y, BW, 9, P.blueIce);
+      g.rect(x, y, BW, 2, P.blueIceTop);
+      g.rect(x + (sd % 2 ? 0 : 30), y, 30, 6, P.packed);
+      g.rect(x + (sd % 2 ? 0 : 30), y, 30, 3, P.snow);
+      cracks(g, P, x, y + 4, sd);
+      return;
+    }
+    if (kind === PACKED) {                                 // a dent, not a crack
+      g.rect(x + 18 + sd * 5, y + 4, 16, 8, P.packedBot);
+      g.rect(x + 20 + sd * 5, y + 5, 12, 5, P.packed);
+      return;
+    }
+    cracks(g, P, x, y, sd);                                // ice and everything else: fractures
+    if (kind === BLUEICE) { g.rect(x + 28 + sd * 3, y + 11, 3, 3, P.snow); g.rect(x + 27 + sd * 3, y + 7, 2, 4, P.snow); }
+  }
+
+  // Small things ON a block that break the slab's silhouette: grass, flowers, a
+  // mushroom, coral polyps, icicles, drips, an antenna. seed picks which, so
+  // two blocks of one material side by side are not twins.
+  function topper(g, P, x, y, kind, seed) {
+    var sd = seed || 0;
+    if (kind === MOSSLOG) {
+      if (sd === 0 || sd === 3) {                          // grass
+        g.rect(x + 8, y - 4, 2, 4, P.mossLite); g.rect(x + 12, y - 6, 2, 6, P.moss); g.rect(x + 16, y - 3, 2, 3, P.mossLite);
+        g.rect(x + 41, y - 5, 2, 5, P.moss); g.rect(x + 45, y - 3, 2, 3, P.mossLite);
+      }
+      if (sd === 1 || sd === 3) {                          // flowers
+        g.rect(x + 27, y - 5, 2, 5, P.moss); g.rect(x + 25, y - 8, 6, 3, P.coralLite); g.rect(x + 27, y - 7, 2, 1, P.goldLight);
+        if (sd === 1) { g.rect(x + 48, y - 4, 2, 4, P.moss); g.rect(x + 46, y - 7, 6, 3, P.snow); g.rect(x + 48, y - 6, 2, 1, P.goldLight); }
+      }
+      if (sd === 2) {                                      // a mushroom
+        g.rect(x + 36, y - 5, 4, 5, P.snow); g.rect(x + 32, y - 9, 12, 4, P.red); g.rect(x + 35, y - 8, 2, 1, P.snow); g.rect(x + 40, y - 7, 2, 1, P.snow);
+        g.rect(x + 10, y - 3, 2, 3, P.mossLite);
+      }
+      return;
+    }
+    if (kind === WOOD && sd === 2) { g.rect(x + 44, y - 4, 2, 4, P.moss); g.rect(x + 42, y - 6, 3, 2, P.mossLite); g.rect(x + 46, y - 6, 3, 2, P.mossLite); return; }
+    if (kind === SANDSTONE && sd === 1) { g.rect(x + 12, y - 4, 1, 4, P.sandBot); g.rect(x + 15, y - 6, 1, 6, P.sandBot); g.rect(x + 18, y - 3, 1, 3, P.sandBot); return; }
+    if (kind === BRICK && sd === 2) { g.rect(x + 50, y - 3, 2, 3, P.moss); g.rect(x + 48, y - 5, 3, 2, P.mossLite); g.rect(x + 52, y - 6, 3, 2, P.mossLite); return; }
+    if (kind === CORAL) {                                  // polyps stand up off the top
+      g.rect(x + 10 + sd * 4, y - 4, 4, 4, P.coralLite); g.rect(x + 11 + sd * 4, y - 6, 2, 2, P.coralLite);
+      g.rect(x + 38 - sd * 3, y - 3, 4, 3, P.coral); g.rect(x + 39 - sd * 3, y - 5, 2, 2, P.coralLite);
+      if (sd === 3) { g.rect(x + 25, y - 3, 6, 2, P.gold); g.rect(x + 27, y - 5, 2, 6, P.gold); }   // a starfish
+      return;
+    }
+    if (kind === SLAG && sd % 2) {                         // drips of heat hanging under
+      g.rect(x + 14, y + BH, 2, 4 + sd, P.slagGlow); g.rect(x + 38, y + BH, 2, 3, P.slagGlow);
+      return;
+    }
+    if (kind === NEON && sd === 3) { g.rect(x + 26, y - 5, 8, 5, P.obsidianTop); g.rect(x + 28, y - 3, 4, 2, P.neonCyan); return; }
+    if (kind === CIRCUIT && sd === 3) { g.rect(x + 50, y - 8, 1, 8, P.ironTop); g.rect(x + 48, y - 9, 5, 1, P.ironTop); return; }
+    if (kind === SOLAR && sd === 2) { g.rect(x + 8, y - 7, 1, 7, P.ironTop); g.rect(x + 6, y - 8, 5, 1, P.ironTop); return; }
+    if (kind === MOONROCK && sd % 2) { g.rect(x + 12 + sd * 6, y - 3, 6, 3, P.moon); g.rect(x + 13 + sd * 6, y - 4, 4, 1, P.moonTop); return; }
+    if (kind === ROCK && sd === 1) { g.rect(x + 36, y - 3, 7, 3, P.rock); g.rect(x + 37, y - 4, 5, 1, P.rockTop); return; }
+    if ((kind === BLUEICE || kind === HOLLOW || kind === SNOWCAP) && sd % 2) {   // icicles under
+      g.rect(x + 10 + sd * 5, y + BH, 2, 4, P.blueIceTop); g.rect(x + 40 - sd * 2, y + BH, 2, 3 + sd, P.blueIceTop);
+      return;
+    }
+    if (kind === PACKED && sd !== 1) {                     // a tuft of snow
+      g.rect(x + 20 + sd * 7, y - 3, 8, 3, P.snow); g.rect(x + 22 + sd * 7, y - 4, 4, 1, P.snow);
+      return;
+    }
+    if (kind === 1 && sd === 2) { g.rect(x + 18, y + BH, 2, 3, P.blueIceTop); g.rect(x + 44, y + BH, 2, 4, P.blueIceTop); }
+  }
+
+  function drawBlock(g, P, x, y, strata, kind, dmg, seed) {
+    var sd = seed || 0;
     if (kind === POWDER) {                    // loose: no edges, nothing to stand on
       for (var q = 0; q < 40; q++) {
-        g.rect(x + (q * 23 % (BW - 3)), y + (q * 11 % (BH - 3)), 3, 3,
+        g.rect(x + ((q * 23 + sd * 7) % (BW - 3)), y + ((q * 11 + sd * 3) % (BH - 3)), 3, 3,
                q % 3 ? P.powder : P.snow);
       }
       return;
@@ -2153,9 +2974,13 @@
       g.rect(x, y, BW, BH, P.packed);
       g.rect(x, y, BW, 5, P.snow);
       g.rect(x, y + BH - 3, BW, 3, P.packedBot);
-      g.rect(x + 9, y + 10, 12, 3, P.snow);
-      g.rect(x + 33, y + 15, 10, 3, P.packedBot);
-      if (dmg) cracks(g, P, x, y);
+      g.rect(x + 9 + sd * 4, y + 10, 12, 3, P.snow);
+      g.rect(x + 33 - sd * 3, y + 15, 10, 3, P.packedBot);
+      g.rect(x + 24, y + 7, 3, 3, P.snow);                // grains
+      g.rect(x + 47, y + 9, 3, 3, P.snow);
+      g.rect(x + 14, y + 17, 6, 2, P.packedBot);
+      topper(g, P, x, y, kind, sd);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
       return;
     }
     if (kind === BLUEICE) {
@@ -2163,15 +2988,19 @@
       g.rect(x, y, BW, 4, P.blueIceTop);
       g.rect(x, y + BH - 5, BW, 5, P.blueIceBot);
       g.rect(x + BW - 3, y, 3, BH, P.blueIceBot);
-      g.rect(x + 6, y + 7, 15, 3, P.blueIceTop);
-      if (dmg) cracks(g, P, x, y);
+      g.rect(x + 6 + sd * 5, y + 7, 15, 3, P.blueIceTop);
+      g.rect(x + 30, y + 12, 9, 2, P.blueIceTop);          // a second facet
+      g.rect(x + 44 - sd * 4, y + 6, 2, 9, P.blueIceTop);  // and a vertical one
+      g.rect(x + 20, y + 15, 3, 3, P.blueIceBot);
+      topper(g, P, x, y, kind, sd);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
       return;
     }
     if (kind === CRACKED) {
       g.rect(x, y, BW, BH, strata.f);
       g.rect(x, y, BW, 4, strata.t);
       g.rect(x, y + BH - 4, BW, 4, strata.b);
-      cracks(g, P, x, y);                     // already broken before you touch it
+      cracks(g, P, x, y, sd);                 // already broken before you touch it
       return;
     }
     if (kind === WOOD) {
@@ -2181,7 +3010,11 @@
       for (var gr = 0; gr < 4; gr++) g.rect(x + 4, y + 6 + gr * 4, BW - 8, 1, P.woodBot);
       g.rect(x + 3, y, 3, BH, P.woodBot);
       g.rect(x + BW - 6, y, 3, BH, P.woodBot);
-      if (dmg) cracks(g, P, x, y);
+      g.rect(x + 18 + sd * 8, y + 9, 5, 5, P.woodBot);     // a knot, somewhere different each time
+      g.rect(x + 19 + sd * 8, y + 10, 3, 3, P.woodTop);
+      if (sd !== 1) g.rect(x + 40, y + 13, 4, 4, P.woodBot);
+      topper(g, P, x, y, kind, sd);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
       return;
     }
     if (kind === CRATE) {
@@ -2196,55 +3029,72 @@
       g.rect(x + 25, y + 6, 10, 12, P.purple);
       g.rect(x + 25, y + 6, 10, 3, P.purpleLite);
       g.rect(x + 28, y + 3, 4, 4, P.green);
-      if (dmg) cracks(g, P, x, y);
+      g.rect(x + 9, y + 3, 2, 2, P.crateBot);              // corner nails
+      g.rect(x + 9, y + BH - 5, 2, 2, P.crateBot);
+      g.rect(x + BW - 11, y + 3, 2, 2, P.crateBot);
+      g.rect(x + BW - 11, y + BH - 5, 2, 2, P.crateBot);
+      if (sd === 2) g.rect(x + 11, y + 16, 12, 3, P.snow);  // a shipping label
+      if (dmg) damageLook(g, P, x, y, WOOD, sd);
       return;
     }
     if (kind === GOLDORE) {
       g.rect(x, y, BW, BH, P.rock);
       g.rect(x, y, BW, 4, P.rockTop);
       g.rect(x, y + BH - 4, BW, 4, P.rockBot);
-      g.rect(x + 8, y + 7, 7, 6, P.gold);               // veins of gold in stone
-      g.rect(x + 9, y + 8, 4, 3, P.goldLight);
-      g.rect(x + 24, y + 13, 9, 5, P.gold);
-      g.rect(x + 25, y + 14, 5, 2, P.goldLight);
-      g.rect(x + 42, y + 6, 6, 6, P.gold);
-      g.rect(x + 43, y + 7, 3, 3, P.goldLight);
+      g.rect(x + 8 + sd * 3, y + 7, 7, 6, P.gold);         // veins of gold in stone
+      g.rect(x + 9 + sd * 3, y + 8, 4, 3, P.goldLight);
+      g.rect(x + 24, y + 13 - sd, 9, 5, P.gold);
+      g.rect(x + 25, y + 14 - sd, 5, 2, P.goldLight);
+      g.rect(x + 42 - sd * 2, y + 6, 6, 6, P.gold);
+      g.rect(x + 43 - sd * 2, y + 7, 3, 3, P.goldLight);
+      g.rect(x + 18, y + 16, 3, 2, P.gold);                // flecks
+      g.rect(x + 51, y + 15, 3, 3, P.gold);
+      g.rect(x + 36, y + 5, 2, 2, P.goldLight);
       return;
     }
     if (kind === SNOWCAP) {
+      var cap = 8 + (sd % 3);
       g.rect(x, y, BW, BH, P.blueIce);                  // hard ice under
-      g.rect(x, y, BW, 9, P.packed);                    // soft snow on top
+      g.rect(x, y, BW, cap, P.packed);                  // soft snow on top
       g.rect(x, y, BW, 4, P.snow);
-      g.rect(x, y + 9, BW, 2, P.blueIceTop);            // the seam that gives it away
+      g.rect(x, y + cap, BW, 2, P.blueIceTop);          // the seam that gives it away
       g.rect(x, y + BH - 4, BW, 4, P.blueIceBot);
-      if (dmg) cracks(g, P, x, y);
+      topper(g, P, x, y, kind, sd);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
       return;
     }
     if (kind === HOLLOW) {
       g.rect(x, y, BW, BH, P.blueIce);
       g.rect(x, y, BW, 3, P.blueIceTop);
       g.rect(x, y + BH - 3, BW, 3, P.blueIceBot);
-      g.rect(x + 7, y + 6, BW - 14, BH - 12, P.hollowAir);   // the air pocket
-      g.rect(x + 7, y + 6, BW - 14, 2, P.blueIceBot);
+      g.rect(x + 7 + sd * 2, y + 6, BW - 14 - sd * 4, BH - 12, P.hollowAir);   // the air pocket
+      g.rect(x + 7 + sd * 2, y + 6, BW - 14 - sd * 4, 2, P.blueIceBot);
+      topper(g, P, x, y, kind, sd);
       return;
     }
     if (kind === OBSIDIAN) {
       g.rect(x, y, BW, BH, P.obsidian);
       g.rect(x, y, BW, 3, P.obsidianTop);
       g.rect(x, y + BH - 4, BW, 4, P.obsidianBot);
-      g.rect(x + 9, y + 5, 5, 12, P.obsidianTop);       // glassy facets
-      g.rect(x + 27, y + 9, 4, 9, P.obsidianTop);
-      g.rect(x + 41, y + 4, 4, 8, P.obsidianTop);
-      if (dmg) cracks(g, P, x, y);
+      g.rect(x + 9 + sd * 4, y + 5, 5, 12, P.obsidianTop);       // glassy facets
+      g.rect(x + 27, y + 9 - sd, 4, 9, P.obsidianTop);
+      g.rect(x + 41 - sd * 3, y + 4, 4, 8, P.obsidianTop);
+      g.rect(x + 10 + sd * 4, y + 6, 2, 4, P.snow);              // a light on each facet
+      g.rect(x + 28, y + 10 - sd, 2, 3, P.snow);
+      g.rect(x + 19, y + 14, 6, 4, P.obsidianBot);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
       return;
     }
     if (kind === COAL) {
       g.rect(x, y, BW, BH, P.coal);
       g.rect(x, y, BW, 3, P.coalTop);
       g.rect(x, y + BH - 3, BW, 3, P.coalBot);
-      g.rect(x + 11, y + 8, 8, 5, P.coalTop);
-      g.rect(x + 30, y + 12, 10, 4, P.coalTop);
+      g.rect(x + 11 + sd * 3, y + 8, 8, 5, P.coalTop);
+      g.rect(x + 30, y + 12 - sd, 10, 4, P.coalTop);
       g.rect(x + 21, y + 5, 5, 4, P.coalBot);
+      g.rect(x + 13 + sd * 3, y + 9, 2, 2, P.snow);       // glints
+      g.rect(x + 33, y + 13 - sd, 2, 2, P.snow);
+      g.rect(x + 46, y + 7, 6, 3, P.coalTop);
       return;
     }
     if (kind === IRON) {
@@ -2253,20 +3103,177 @@
       g.rect(x, y + BH - 4, BW, 4, P.ironBot);
       g.rect(x, y, 3, BH, P.ironBot);
       g.rect(x + BW - 3, y, 3, BH, P.ironBot);
-      for (var rv = 0; rv < 3; rv++) {
-        g.rect(x + 9 + rv * 18, y + 6, 4, 4, P.ironTop);
-        g.rect(x + 9 + rv * 18, y + BH - 10, 4, 4, P.ironTop);
+      var rivets = 2 + (sd % 3);
+      for (var rv = 0; rv < rivets; rv++) {
+        var rx = x + 9 + rv * Math.floor((BW - 22) / Math.max(1, rivets - 1));
+        g.rect(rx, y + 6, 4, 4, P.ironTop);
+        g.rect(rx, y + BH - 10, 4, 4, P.ironTop);
       }
+      if (sd === 3) for (var st = 0; st < BW - 12; st += 8) g.rect(x + 6 + st, y + 10, 4, 4, P.gold);   // hazard stripe
       return;
     }
     if (kind === ROCK) {
       g.rect(x, y, BW, BH, P.rock);
       g.rect(x, y, BW, 4, P.rockTop);
       g.rect(x, y + BH - 4, BW, 4, P.rockBot);
-      g.rect(x + 12, y + 9, 12, 4, P.rockBot);
-      g.rect(x + 36, y + 14, 9, 3, P.rockBot);
+      g.rect(x + 12 + sd * 3, y + 9, 12, 4, P.rockBot);
+      g.rect(x + 36 - sd * 2, y + 14, 9, 3, P.rockBot);
       g.rect(x + 9, y + 5, 5, 3, P.rockTop);
-      if (dmg) cracks(g, P, x, y);
+      g.rect(x + 28, y + 6, 3, 2, P.rockTop);              // speckles
+      g.rect(x + 48, y + 8, 2, 2, P.rockBot);
+      g.rect(x + 5, y + 15, 4, 2, P.rockBot);
+      if (sd === 2) g.rect(x + 44, y + 4, 5, 2, P.moss);   // a little moss
+      topper(g, P, x, y, kind, sd);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
+      return;
+    }
+    if (kind === SANDSTONE) {
+      g.rect(x, y, BW, BH, P.sand);
+      g.rect(x, y, BW, 4, P.sandTop);
+      g.rect(x, y + BH - 4, BW, 4, P.sandBot);
+      for (var sg = 0; sg < 3; sg++) {                     // wind-laid grain
+        g.rect(x + 4 + sg * 6 + sd * 2, y + 8 + sg * 4, 22 - sg * 4, 1, P.sandBot);
+        g.rect(x + 30 + sg * 4 - sd * 2, y + 6 + sg * 5, 20 - sg * 5, 1, P.sandTop);
+      }
+      g.rect(x + 46 - sd * 4, y + 15, 5, 3, P.sandBot);
+      if (sd === 3) { g.rect(x + 40, y + 6, 6, 2, P.snow); g.rect(x + 42, y + 5, 2, 4, P.snow); }   // a shell
+      topper(g, P, x, y, kind, sd);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
+      return;
+    }
+    if (kind === BRICK) {
+      g.rect(x, y, BW, BH, P.mortar);
+      for (var br = 0; br < 3; br++) {                     // three courses, staggered
+        var off = (br + sd) % 2 ? 10 : 0;
+        for (var bc = -1; bc < 4; bc++) {
+          var bx = x + off + bc * 20 + 1, bw2 = 18;
+          if (bx < x) { bw2 -= (x - bx); bx = x; }
+          if (bx + bw2 > x + BW) bw2 = x + BW - bx;
+          if (bw2 > 0) g.rect(bx, y + 1 + br * 8, bw2, 6, (br === 1 && bc === sd - 1) ? P.brickBot : P.brick);
+        }
+      }
+      g.rect(x, y, BW, 2, P.brickTop);
+      g.rect(x, y + BH - 3, BW, 3, P.brickBot);
+      g.rect(x + 12, y + 3, 4, 2, P.brickTop);
+      g.rect(x + 36, y + 11, 3, 2, P.brickTop);
+      topper(g, P, x, y, kind, sd);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
+      return;
+    }
+    if (kind === CORAL) {
+      g.rect(x, y, BW, BH, P.coral);
+      g.rect(x, y, BW, 3, P.coralLite);
+      g.rect(x, y + BH - 3, BW, 3, P.coralDark);
+      g.rect(x + 8 + sd * 3, y + 5, 6, 12, P.coralLite);   // branches
+      g.rect(x + 11 + sd * 3, y + 3, 4, 5, P.coralLite);
+      g.rect(x + 26, y + 8 - sd, 8, 10, P.coralLite);
+      g.rect(x + 44 - sd * 2, y + 4, 5, 14, P.coralLite);
+      g.rect(x + 17, y + 12, 4, 4, P.coralDark);           // holes
+      g.rect(x + 38, y + 7, 3, 3, P.coralDark);
+      g.rect(x + 52, y + 13, 3, 3, P.coralDark);
+      topper(g, P, x, y, kind, sd);
+      return;
+    }
+    if (kind === SEAGLASS) {
+      g.rect(x, y, BW, BH, P.glass);
+      g.rect(x, y, BW, 3, P.glassLite);
+      g.rect(x, y + BH - 4, BW, 4, P.glassDark);
+      g.rect(x + BW - 3, y, 3, BH, P.glassDark);
+      g.rect(x + 6 + sd * 4, y + 6, 3, 12, P.glassLite);   // light through it
+      g.rect(x + 12 + sd * 4, y + 4, 2, 8, P.glassLite);
+      g.rect(x + 28, y + 9 + sd, 14, 2, P.glassLite);
+      g.rect(x + 45, y + 5, 2, 10, P.glassLite);
+      g.rect(x + 22 + sd * 6, y + 15, 2, 2, P.snow);        // bubbles caught in it
+      g.rect(x + 50 - sd * 3, y + 13, 2, 2, P.snow);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
+      return;
+    }
+    if (kind === CIRCUIT) {
+      g.rect(x, y, BW, BH, P.board);
+      g.rect(x, y, BW, 2, P.trace);
+      g.rect(x, y + BH - 3, BW, 3, P.boardDark);
+      g.rect(x + 5, y + 6 + sd, 22, 2, P.trace);           // traces
+      g.rect(x + 25, y + 6 + sd, 2, 9, P.trace);
+      g.rect(x + 25, y + 13 + sd, 18, 2, P.trace);
+      g.rect(x + 41, y + 13 + sd, 2, 6, P.trace);
+      g.rect(x + 8 + sd * 2, y + 12, 10, 7, P.boardDark);  // a chip
+      g.rect(x + 9 + sd * 2, y + 13, 8, 5, P.ink2);
+      g.rect(x + 47 - sd, y + 5, 7, 6, P.gold);            // a pad
+      g.rect(x + 48 - sd, y + 6, 5, 4, P.goldLight);
+      if (sd === 1) g.rect(x + 34, y + 4, 3, 3, P.red);    // an LED
+      topper(g, P, x, y, kind, sd);
+      return;
+    }
+    if (kind === NEON) {
+      var tube = sd % 2 ? P.neonCyan : P.neon, glow = sd % 2 ? P.glassLite : P.neonLite;
+      g.rect(x, y, BW, BH, P.neonPanel);
+      g.rect(x, y, BW, 2, P.obsidianTop);
+      g.rect(x, y + BH - 3, BW, 3, P.obsidianBot);
+      g.rect(x + 6, y + 9, BW - 12, 2, tube);              // the tube, with its glow
+      g.rect(x + 6, y + 8, BW - 12, 1, glow);
+      g.rect(x + 6, y + 11, BW - 12, 1, glow);
+      g.rect(x + 5, y + 7, 3, 6, glow);
+      g.rect(x + BW - 8, y + 7, 3, 6, glow);
+      g.rect(x + 12, y + 16, 8, 2, sd % 2 ? P.neon : P.neonCyan);   // a second, smaller tube
+      g.rect(x + 40, y + 16, 8, 2, sd % 2 ? P.neon : P.neonCyan);
+      topper(g, P, x, y, kind, sd);
+      return;
+    }
+    if (kind === MOONROCK) {
+      g.rect(x, y, BW, BH, P.moon);
+      g.rect(x, y, BW, 4, P.moonTop);
+      g.rect(x, y + BH - 4, BW, 4, P.moonBot);
+      g.rect(x + 8 + sd * 3, y + 7, 9, 7, P.moonBot);      // craters: dark bowl, light rim
+      g.rect(x + 7 + sd * 3, y + 6, 9, 1, P.moonTop);
+      g.rect(x + 31, y + 11 - sd, 12, 8, P.moonBot);
+      g.rect(x + 30, y + 10 - sd, 12, 1, P.moonTop);
+      g.rect(x + 48, y + 6 + sd, 6, 5, P.moonBot);
+      g.rect(x + 47, y + 5 + sd, 6, 1, P.moonTop);
+      g.rect(x + 22, y + 16, 3, 2, P.moonBot);
+      topper(g, P, x, y, kind, sd);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
+      return;
+    }
+    if (kind === SOLAR) {
+      g.rect(x, y, BW, BH, P.solarFrame);
+      g.rect(x + 2, y + 2, BW - 4, BH - 4, P.solar);
+      for (var sc2 = 1; sc2 < 4; sc2++) g.rect(x + 2 + sc2 * 14, y + 2, 1, BH - 4, P.solarFrame);
+      g.rect(x + 2, y + BH / 2, BW - 4, 1, P.solarFrame);
+      g.rect(x + 5 + sd * 14, y + 4, 6, 3, P.solarLite);   // sun on the glass
+      g.rect(x + 33, y + 14, 5, 3, P.solarLite);
+      if (sd === 1) g.rect(x + 45, y + 3, 12, 9, P.ink2);  // a dead cell
+      topper(g, P, x, y, kind, sd);
+      return;
+    }
+    if (kind === SLAG) {
+      g.rect(x, y, BW, BH, P.slag);
+      g.rect(x, y, BW, 3, P.slagTop);
+      g.rect(x, y + BH - 3, BW, 3, P.ink2);
+      g.rect(x + 9 + sd * 3, y + 6, 12, 2, P.slagGlow);    // heat in the cracks
+      g.rect(x + 19 + sd * 3, y + 8, 2, 8, P.slagGlow);
+      g.rect(x + 33, y + 12 - sd, 14, 2, P.slagGlow);
+      g.rect(x + 45, y + 5, 2, 7 + sd, P.slagGlow);
+      g.rect(x + 10 + sd * 3, y + 7, 4, 1, P.goldLight);   // the brightest point of each
+      g.rect(x + 36, y + 13 - sd, 4, 1, P.goldLight);
+      g.rect(x + 26, y + 16, 5, 4, P.slagTop);
+      topper(g, P, x, y, kind, sd);
+      return;
+    }
+    if (kind === MOSSLOG) {
+      g.rect(x, y, BW, BH, P.wood);
+      g.rect(x, y + BH - 4, BW, 4, P.woodBot);
+      for (var mg = 0; mg < 3; mg++) g.rect(x + 4, y + 9 + mg * 4, BW - 8, 1, P.woodBot);
+      g.rect(x + 3, y, 3, BH, P.woodBot);
+      g.rect(x + BW - 6, y, 3, BH, P.woodBot);
+      g.rect(x, y, BW, 5, P.moss);                         // moss along the top
+      g.rect(x + 6 + sd * 5, y + 5, 10, 3, P.moss);
+      g.rect(x + 30 - sd * 3, y + 5, 14, 2, P.moss);
+      g.rect(x + 2, y, 8, 2, P.mossLite);
+      g.rect(x + 22, y, 12, 2, P.mossLite);
+      g.rect(x + 46, y, 9, 2, P.mossLite);
+      g.rect(x + 38 - sd * 6, y + 14, 5, 4, P.woodBot);    // a knot
+      topper(g, P, x, y, kind, sd);
+      if (dmg) damageLook(g, P, x, y, kind, sd);
       return;
     }
     if (kind === 'line') {
@@ -2280,10 +3287,24 @@
     g.rect(x, y, BW, 4, strata.t);
     g.rect(x, y + BH - 4, BW, 4, strata.b);
     g.rect(x + BW - 3, y, 3, BH, strata.b);
-    g.rect(x + 5, y + 8, 18, 3, strata.t);
-    g.rect(x + 33, y + 14, 14, 3, strata.b);
-    g.rect(x + 45, y + 6, 3, 6, strata.t);
+    g.rect(x + 5 + sd * 4, y + 8, 18, 3, strata.t);
+    g.rect(x + 33 - sd * 3, y + 14, 14, 3, strata.b);
+    g.rect(x + 45, y + 6 - sd, 3, 6, strata.t);
     g.rect(x + 26, y + 17, 6, 2, strata.b);
+    if (sd === 1) { g.rect(x + 12, y + 5, 2, 2, P.snow); g.rect(x + 38, y + 10, 2, 2, P.snow); }   // frost
+    topper(g, P, x, y, kind, sd);
+    if (dmg) damageLook(g, P, x, y, kind, sd);
+  }
+
+  function drawBlockAngled(g, P, x, y, strata, kind, dmg, dir, seed) {
+    var ctx = g.ctx, band = BH / 3;
+    for (var i = 0; i < 3; i++) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x - 3 * U, y + i * band, BW + 6 * U, band); ctx.clip();
+      ctx.translate(dir * (2 - i) * U, 0);
+      drawBlock(g, P, x, y, strata, kind, dmg, seed);
+      ctx.restore();
+    }
   }
 
   function drawRow(g, P, r) {
@@ -2314,13 +3335,26 @@
     for (c = 0; c < COLS; c++) {
       var t = r.b[c];
       if (!t) continue;
-      drawBlock(g, P, c * BW, y, strata, line ? 'line' : t, r.d[c] || 0);
+      var dmg = r.d[c] || 0;
+      // A hit from below knocks the block up two cells for a few frames, and a
+      // block that has been chipped stays leaning until it goes.
+      var age = (T.anim && r.ht && r.ht[c] !== undefined) ? S.clock - r.ht[c] : 9;
+      var by = y - (age < 0.12 ? Math.round((1 - age / 0.12) * 2) * U : 0);
+      // Which variant of the material this block is: fixed per cell, so it never
+      // flickers, and different from its neighbours.
+      var seed = (r.n * 7 + c * 13) & 3;
+      if (T.anim && dmg > 0 && !line) drawBlockAngled(g, P, c * BW, by, strata, t, dmg, c % 2 ? 1 : -1, seed);
+      else drawBlock(g, P, c * BW, by, strata, line ? 'line' : t, dmg, seed);
+      if (T.anim && t === GOLDORE) {
+        var gk = Math.floor(S.clock * 5 + c) % 6;
+        g.rect(c * BW + 9 + gk * 7, by + 6 + (gk % 3) * 4, U, U, P.snow);
+      }
       // A hard edge under and over every block. The background is a building
       // now, full of its own horizontal lines, and without this the floor you
       // must land on has the same weight as a storey slab behind it.
       if (MAT[t] && MAT[t].solid) {
-        g.rect(c * BW, y + BH - 2, BW, 2, P.blockEdge);
-        g.rect(c * BW, y, BW, 1, P.blockLip);
+        g.rect(c * BW, by + BH - 2, BW, 2, P.blockEdge);
+        g.rect(c * BW, by, BW, 1, P.blockLip);
       }
     }
 
@@ -2334,10 +3368,12 @@
 
     if (r.veg >= 0) {
       x = r.veg * BW + BW / 2 - 9;
-      g.rect(x, y - 21, 18, 18, P.purple);
-      g.rect(x, y - 21, 18, 4, P.purpleLite);
-      g.rect(x + 6, y - 27, 6, 6, P.green);
-      g.rect(x + 3, y - 17, 3, 3, P.goldLight);
+      // A slow one-cell bob, phased by row so a screen of veggies is not in step.
+      var vy2 = y - (T.anim ? Math.round(Math.sin(S.clock * 3 + r.n)) * U : 0);
+      g.rect(x, vy2 - 21, 18, 18, P.purple);
+      g.rect(x, vy2 - 21, 18, 4, P.purpleLite);
+      g.rect(x + 6, vy2 - 27, 6, 6, P.green);
+      g.rect(x + 3, vy2 - 17, 3, 3, P.goldLight);
     }
     if (r.topi) drawTopi(g, P, r.topi.x, y - TH, r.topi.dir);
     if (line) Arcade.drawTextC(g.ctx, placeOf(r.n / ZONE_ROWS).name, W / 2, y - 30, U, P.gold);
@@ -2453,7 +3489,8 @@
 
     // The score sits here, not in the band above. Centred up there it ran into
     // the TUNED tag on one side and the place name on the other.
-    Arcade.drawText(ctx, String(Math.floor(g.score)), 100, y, VS, P.text);
+    var svs = S.scorePop > 0 ? VS + 1 : VS;      // one scale step, whole pixels
+    Arcade.drawText(ctx, String(Math.floor(g.score)), 100, y - (svs - VS) * 3, svs, P.text);
 
     if (S.combo <= 0) return;
 
@@ -2496,7 +3533,7 @@
   // reads as one tilted object rather than straight text on a tilted box.
   function drawCard(g, P, ctx, n) {
     var t = 1 - n.t / CARD_SECS;
-    var sc = t < 0.14 ? 3 : 5;
+    var sc = t < 0.14 ? 4 : 6;                  // bigger, and it grows in
     var head = 'X' + n.mult;
     var hw = bigWidth(head, sc), sw = bigWidth('COMBO', 3);
     var w = Math.max(hw, sw) + 20 * U, h = BIG_H * sc + 16 * U;
@@ -2506,7 +3543,8 @@
     var r, dx;
     for (r = 0; r < h; r++) {
       dx = Math.round((h - r) * SLANT);
-      g.rect(cx + dx, cy + r, w, 1, (r < 2 * U || r > h - 2 * U) ? P.gold : P.panel);
+      g.rect(cx + dx, cy + r, w, 1, (r < 2 * U || r > h - 2 * U)
+             ? ((t < 0.3 && Math.floor(t * 40) % 2) ? P.snow : P.gold) : P.panel);
     }
     if (t < 0.14) return;
     bigText(g, head, W / 2 - hw / 2, cy + 6 * U, sc, P.gold, SLANT);
@@ -2657,26 +3695,36 @@
       if (fl.t < 0.06) g.rect(fl.x, fl.y - S.cam, BW, BH, P.sparkle);
     }
 
-    for (i = 0; i < S.parts.length; i++) {
-      var q = S.parts[i];
-      if (q.spark) {
-        // twinkle: the size flicks between one and two pixels as it fades
-        var tw = Math.floor(q.life * 30) % 2 ? 2 : 1;
-        g.rect(q.x, q.y - S.cam, tw * U, tw * U, q.life < 0.25 && tw === 1 ? P.gold : P.sparkle);
-      } else {
-        var qs = (q.size || 2) * U;
-        g.rect(q.x, q.y - S.cam, qs, qs, P[q.tone]);
-      }
-    }
+    drawParts(g, P);
 
     var py = S.p.y - S.cam;
-    if (!(S.hurt > 0 && Math.floor(S.hurt * 18) % 2 === 0)) drawPlayer(g, P, S.p.x, py);
+    // Knocked: the sprite stays whole and three gold stars orbit its head for
+    // the length of the hurt window. Chosen from the picker over the blink,
+    // which was the one thing all five rejected options had in common.
+    drawPlayer(g, P, S.p.x, py);
+    if (S.hurt > 0) {
+      var since = 0.75 - S.hurt, hx = S.p.x + PW / 2, hy = py - 8;
+      for (i = 0; i < 3; i++) {
+        var ang = since * 14 + i * 2.1;
+        var stx = hx + Math.round(Math.cos(ang) * 14 / U) * U, sty = hy + Math.round(Math.sin(ang) * 4 / U) * U;
+        g.rect(stx - U, sty, 3 * U, U, P.gold);
+        g.rect(stx, sty - U, U, 3 * U, P.gold);
+      }
+    }
+    for (i = 0; i < S.floats.length; i++) {
+      var fl2 = S.floats[i];
+      ctx.globalAlpha = fl2.t < 0.4 ? 1 : 1 - (fl2.t - 0.4) / 0.3;
+      var fw = Arcade.textWidth(fl2.text, U);
+      Arcade.drawText(ctx, fl2.text, Math.round(fl2.x - fw / 2), Math.round(fl2.y - S.cam - Math.floor(fl2.t * 20) * U), U, P[fl2.col]);
+    }
+    ctx.globalAlpha = 1;
     if (S.fly > 0) drawCondor(g, P, S.p.x, py, S.fly);
 
     drawAvalanche(g, ctx, P);
 
     if (g.state === 'play') drawKitHud(g, P, 3 * U, HUD_Y, S.kit, S.veg, T.kitCost, bestKit());
 
+    drawBolts(g, ctx, P);
     drawJoystick(g, ctx, P);
     drawNote(g, P, ctx);
 
@@ -2712,6 +3760,7 @@
   var game = Arcade.create({
     id: 'icy-hopper',
     res: U,
+    onDeath: function () { SFX.die(); SFX.music.stop(); },
     baseW: 160,          // eight columns across, see COLS
     hud: false,          // the score is drawn in the HUD row instead
     name: 'ICY HOPPER',
@@ -2746,6 +3795,16 @@
         crate: '#8f5f2c', crateTop: '#b8834a', crateBot: '#5a3718',
         obsidian: '#453a63', obsidianTop: '#8878b8', obsidianBot: '#2a2240',
         coal: '#3a3f47', coalTop: '#666d78', coalBot: '#1e2228', hollowAir: '#b9cfe0',
+        sand: '#d9b36c', sandTop: '#efd191', sandBot: '#a4803f',
+        brick: '#9a5a4a', brickTop: '#c07a66', brickBot: '#5e332a', mortar: '#d8c9b8',
+        coral: '#e07a7a', coralLite: '#f6a9a0', coralDark: '#a34d55',
+        glass: '#3f9c9a', glassLite: '#8fd7d0', glassDark: '#25605f',
+        board: '#2f6d4a', boardDark: '#1c4a30', trace: '#7fd6a0',
+        neonPanel: '#2a2440', neon: '#ff5fd2', neonLite: '#ffb3ec', neonCyan: '#5ff2ff',
+        moon: '#9a9ea8', moonTop: '#c9ccd4', moonBot: '#5f636c',
+        solar: '#1e3f7a', solarLite: '#4d7fd6', solarFrame: '#dfe7f2',
+        slag: '#3a2a2a', slagTop: '#5a3d38', slagGlow: '#ff8c3a',
+        moss: '#4f8a3e', mossLite: '#8cc46a',
         blockEdge: '#0A1730', blockLip: 'rgba(255,255,255,0.9)',
         panel: '#ffffff', panelEdge: '#9db6cc',
         sparkle: '#ffffff',
